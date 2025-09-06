@@ -210,54 +210,18 @@ impl AdobePluginGlobal for Plugin {
     _in_data: InData,
     _: OutData,
   ) -> Result<(), Error> {
-    params.add(
-      Params::Red,
-      "Red",
-      ae::FloatSliderDef::setup(|f| {
-        f.set_slider_min(-100.0);
-        f.set_slider_max(100.0);
-        f.set_valid_min(-100.0);
-        f.set_valid_max(100.0);
-        f.set_default(0.0);
-        f.set_precision(2);
-      }),
-    )?;
-    params.add(
-      Params::Green,
-      "Green",
-      ae::FloatSliderDef::setup(|f| {
-        f.set_slider_min(-100.0);
-        f.set_slider_max(100.0);
-        f.set_valid_min(-100.0);
-        f.set_valid_max(100.0);
-        f.set_default(0.0);
-        f.set_precision(2);
-      }),
-    )?;
-    params.add(
-      Params::Blue,
-      "Blue",
-      ae::FloatSliderDef::setup(|f| {
-        f.set_slider_min(-100.0);
-        f.set_slider_max(100.0);
-        f.set_valid_min(-100.0);
-        f.set_valid_max(100.0);
-        f.set_default(0.0);
-        f.set_precision(2);
-      }),
-    )?;
-    params.add(
-      Params::Alpha,
-      "Alpha",
-      ae::FloatSliderDef::setup(|f| {
-        f.set_slider_min(-100.0);
-        f.set_slider_max(100.0);
-        f.set_valid_min(-100.0);
-        f.set_valid_max(100.0);
-        f.set_default(0.0);
-        f.set_precision(2);
-      }),
-    )?;
+    let my_slider = |f: &mut ae::FloatSliderDef| {
+      f.set_slider_min(-100.0);
+      f.set_slider_max(100.0);
+      f.set_valid_min(-100.0);
+      f.set_valid_max(100.0);
+      f.set_default(0.0);
+      f.set_precision(2);
+    };
+    params.add(Params::Red, "Red", ae::FloatSliderDef::setup(my_slider))?;
+    params.add(Params::Green, "Green", ae::FloatSliderDef::setup(my_slider))?;
+    params.add(Params::Blue, "Blue", ae::FloatSliderDef::setup(my_slider))?;
+    params.add(Params::Alpha, "Alpha", ae::FloatSliderDef::setup(my_slider))?;
 
     params.add(
       Params::Mode,
@@ -279,6 +243,56 @@ impl AdobePluginGlobal for Plugin {
     mut out_data: OutData,
     params: &mut ae::Parameters<Params>,
   ) -> Result<(), ae::Error> {
+    let get_params = || {
+      let mode = params.get(Params::Mode)?.as_popup()?.value();
+      let coef = match mode {
+        1 => 100.0,
+        2 => 5.0,
+        _ => return Err(Error::BadCallbackParameter),
+      };
+      let coef2 = match mode {
+        1 => 1.0,
+        2 => 0.0,
+        _ => return Err(Error::BadCallbackParameter),
+      };
+      let gain = PixelF32 {
+        red: params.get(Params::Red)?.as_float_slider()?.value() as f32 / coef
+          + coef2,
+        green: params.get(Params::Green)?.as_float_slider()?.value() as f32
+          / coef
+          + coef2,
+        blue: params.get(Params::Blue)?.as_float_slider()?.value() as f32
+          / coef
+          + coef2,
+        alpha: params.get(Params::Alpha)?.as_float_slider()?.value() as f32
+          / coef
+          + coef2,
+      };
+
+      let nan = PixelF32 {
+        red: f32::NAN,
+        green: f32::NAN,
+        blue: f32::NAN,
+        alpha: f32::NAN,
+      };
+
+      let min_pixel = PixelF32 {
+        red: 0.0,
+        green: 0.0,
+        blue: 0.0,
+        alpha: 0.0,
+      };
+      let max_pixel = PixelF32 {
+        red: 1.0,
+        green: 1.0,
+        blue: 1.0,
+        alpha: 1.0,
+      };
+      let min = min_pixel.sigmoid_contrast(gain, 0.5, nan, nan);
+      let max = max_pixel.sigmoid_contrast(gain, 0.5, nan, nan);
+
+      Ok((mode, gain, min, max))
+    };
     match cmd {
       ae::Command::About => {
         out_data.set_return_msg(
@@ -306,55 +320,9 @@ impl AdobePluginGlobal for Plugin {
         in_layer,
         mut out_layer,
       } => {
-        let mode = params.get(Params::Mode)?.as_popup()?.value();
-        let coef = match mode {
-          1 => 100.0,
-          2 => 10.0,
-          _ => return Err(Error::BadCallbackParameter),
-        };
-        let coef2 = match mode {
-          1 => 1.0,
-          2 => 0.0,
-          _ => return Err(Error::BadCallbackParameter),
-        };
-        let gain = PixelF32 {
-          red: params.get(Params::Red)?.as_float_slider()?.value() as f32
-            / coef
-            + coef2,
-          green: params.get(Params::Green)?.as_float_slider()?.value() as f32
-            / coef
-            + coef2,
-          blue: params.get(Params::Blue)?.as_float_slider()?.value() as f32
-            / coef
-            + coef2,
-          alpha: params.get(Params::Alpha)?.as_float_slider()?.value() as f32
-            / coef
-            + coef2,
-        };
-
-        let nan = PixelF32 {
-          red: f32::NAN,
-          green: f32::NAN,
-          blue: f32::NAN,
-          alpha: f32::NAN,
-        };
-
-        let min_pixel = PixelF32 {
-          red: 0.0,
-          green: 0.0,
-          blue: 0.0,
-          alpha: 0.0,
-        };
-        let max_pixel = PixelF32 {
-          red: 1.0,
-          green: 1.0,
-          blue: 1.0,
-          alpha: 1.0,
-        };
-        let min = min_pixel.sigmoid_contrast(gain, 0.5, nan, nan);
-        let max = max_pixel.sigmoid_contrast(gain, 0.5, nan, nan);
-
         let progress_final = out_layer.height() as _;
+
+        let (mode, gain, min, max) = get_params()?;
 
         in_layer.iterate_with(
           &mut out_layer,
@@ -429,53 +397,7 @@ impl AdobePluginGlobal for Plugin {
 
         let progress_final = output_world.height() as _;
 
-        let mode = params.get(Params::Mode)?.as_popup()?.value();
-        let coef = match mode {
-          1 => 100.0,
-          2 => 10.0,
-          _ => return Err(Error::BadCallbackParameter),
-        };
-        let coef2 = match mode {
-          1 => 1.0,
-          2 => 0.0,
-          _ => return Err(Error::BadCallbackParameter),
-        };
-        let gain = PixelF32 {
-          red: params.get(Params::Red)?.as_float_slider()?.value() as f32
-            / coef
-            + coef2,
-          green: params.get(Params::Green)?.as_float_slider()?.value() as f32
-            / coef
-            + coef2,
-          blue: params.get(Params::Blue)?.as_float_slider()?.value() as f32
-            / coef
-            + coef2,
-          alpha: params.get(Params::Alpha)?.as_float_slider()?.value() as f32
-            / coef
-            + coef2,
-        };
-
-        let nan = PixelF32 {
-          red: f32::NAN,
-          green: f32::NAN,
-          blue: f32::NAN,
-          alpha: f32::NAN,
-        };
-
-        let min_pixel = PixelF32 {
-          red: 0.0,
-          green: 0.0,
-          blue: 0.0,
-          alpha: 0.0,
-        };
-        let max_pixel = PixelF32 {
-          red: 1.0,
-          green: 1.0,
-          blue: 1.0,
-          alpha: 1.0,
-        };
-        let min = min_pixel.sigmoid_contrast(gain, 0.5, nan, nan);
-        let max = max_pixel.sigmoid_contrast(gain, 0.5, nan, nan);
+        let (mode, gain, min, max) = get_params()?;
 
         input_world.iterate_with(
           &mut output_world,
