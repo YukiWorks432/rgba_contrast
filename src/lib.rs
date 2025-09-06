@@ -1,7 +1,5 @@
 use after_effects as ae;
 
-// A simple noise algorithm. This example shows how to handle different pixel formats and how to iterate them using rayon
-
 #[derive(Eq, PartialEq, Hash, Clone, Copy, Debug)]
 enum Params {
   Red,
@@ -307,7 +305,7 @@ impl AdobePluginGlobal for Plugin {
     match cmd {
       ae::Command::About => {
         out_data.set_return_msg(
-"ColorContrast\rCopyright 2025 HanaYuki.\rThis allows you to adjust the contrast for each color.",
+"RGBA Contrast\rCopyright 2025 HanaYuki.\rThis allows you to adjust the contrast for each color.",
 );
       }
       ae::Command::GlobalSetup => {
