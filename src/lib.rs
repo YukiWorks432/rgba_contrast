@@ -1,5 +1,3 @@
-use std::f32::consts::E;
-
 use after_effects as ae;
 
 // A simple noise algorithm. This example shows how to handle different pixel formats and how to iterate them using rayon
@@ -11,6 +9,23 @@ enum Params {
   Blue,
   Alpha,
   Mode,
+}
+#[derive(Eq, PartialEq, Hash, Clone, Copy, Debug)]
+#[repr(i32)]
+enum Mode {
+  Modern = 1,
+  Legacy = 2,
+}
+
+impl core::convert::TryFrom<i32> for Mode {
+  type Error = ();
+  fn try_from(value: i32) -> Result<Self, Self::Error> {
+    match value {
+      1 => Ok(Mode::Modern),
+      2 => Ok(Mode::Legacy),
+      _ => Err(()),
+    }
+  }
 }
 
 #[derive(Default)]
@@ -227,7 +242,7 @@ impl AdobePluginGlobal for Plugin {
       Params::Mode,
       "Mode",
       ae::PopupDef::setup(|f| {
-        f.set_options(&["Linear", "Sigmoid"]);
+        f.set_options(&["Modern", "Legacy"]);
         f.set_default(2);
         f.set_value(f.default());
       }),
@@ -244,16 +259,12 @@ impl AdobePluginGlobal for Plugin {
     params: &mut ae::Parameters<Params>,
   ) -> Result<(), ae::Error> {
     let get_params = || {
-      let mode = params.get(Params::Mode)?.as_popup()?.value();
-      let coef = match mode {
-        1 => 100.0,
-        2 => 5.0,
-        _ => return Err(Error::BadCallbackParameter),
-      };
-      let coef2 = match mode {
-        1 => 1.0,
-        2 => 0.0,
-        _ => return Err(Error::BadCallbackParameter),
+      let mode_val = params.get(Params::Mode)?.as_popup()?.value();
+      let mode =
+        Mode::try_from(mode_val).map_err(|_| Error::BadCallbackParameter)?;
+      let (coef, coef2) = match mode {
+        Mode::Modern => (5.0, 0.0),
+        Mode::Legacy => (100.0, 1.0),
       };
       let gain = PixelF32 {
         red: params.get(Params::Red)?.as_float_slider()?.value() as f32 / coef
@@ -291,7 +302,7 @@ impl AdobePluginGlobal for Plugin {
       let min = min_pixel.sigmoid_contrast(gain, 0.5, nan, nan);
       let max = max_pixel.sigmoid_contrast(gain, 0.5, nan, nan);
 
-      Ok((mode, gain, min, max))
+      Ok::<_, Error>((mode, gain, min, max))
     };
     match cmd {
       ae::Command::About => {
@@ -339,35 +350,31 @@ impl AdobePluginGlobal for Plugin {
                 ae::GenericPixel::Pixel8(pixel),
                 ae::GenericPixelMut::Pixel8(out_pixel),
               ) => match mode {
-                1 => {
-                  *out_pixel =
-                    pixel.to_pixel32().linear_contrast(gain, 0.5).to_pixel8()
-                }
-                2 => {
+                Mode::Modern => {
                   *out_pixel = pixel
                     .to_pixel32()
                     .sigmoid_contrast(gain, 0.5, min, max)
                     .to_pixel8()
                 }
-
-                _ => return Err(Error::BadCallbackParameter),
+                Mode::Legacy => {
+                  *out_pixel =
+                    pixel.to_pixel32().linear_contrast(gain, 0.5).to_pixel8()
+                }
               },
               (
                 ae::GenericPixel::Pixel16(pixel),
                 ae::GenericPixelMut::Pixel16(out_pixel),
               ) => match mode {
-                1 => {
-                  *out_pixel =
-                    pixel.to_pixel32().linear_contrast(gain, 0.5).to_pixel16()
-                }
-                2 => {
+                Mode::Modern => {
                   *out_pixel = pixel
                     .to_pixel32()
                     .sigmoid_contrast(gain, 0.5, min, max)
                     .to_pixel16()
                 }
-
-                _ => return Err(Error::BadCallbackParameter),
+                Mode::Legacy => {
+                  *out_pixel =
+                    pixel.to_pixel32().linear_contrast(gain, 0.5).to_pixel16()
+                }
               },
               _ => return Err(Error::BadCallbackParameter),
             }
@@ -414,43 +421,40 @@ impl AdobePluginGlobal for Plugin {
                 ae::GenericPixel::Pixel8(pixel),
                 ae::GenericPixelMut::Pixel8(out_pixel),
               ) => match mode {
-                1 => {
-                  *out_pixel =
-                    pixel.to_pixel32().linear_contrast(gain, 0.5).to_pixel8()
-                }
-                2 => {
+                Mode::Modern => {
                   *out_pixel = pixel
                     .to_pixel32()
                     .sigmoid_contrast(gain, 0.5, min, max)
                     .to_pixel8();
                 }
-                _ => return Err(Error::BadCallbackParameter),
+                Mode::Legacy => {
+                  *out_pixel =
+                    pixel.to_pixel32().linear_contrast(gain, 0.5).to_pixel8()
+                }
               },
               (
                 ae::GenericPixel::Pixel16(pixel),
                 ae::GenericPixelMut::Pixel16(out_pixel),
               ) => match mode {
-                1 => {
-                  *out_pixel =
-                    pixel.to_pixel32().linear_contrast(gain, 0.5).to_pixel16()
-                }
-                2 => {
+                Mode::Modern => {
                   *out_pixel = pixel
                     .to_pixel32()
                     .sigmoid_contrast(gain, 0.5, min, max)
                     .to_pixel16();
                 }
-                _ => return Err(Error::BadCallbackParameter),
+                Mode::Legacy => {
+                  *out_pixel =
+                    pixel.to_pixel32().linear_contrast(gain, 0.5).to_pixel16()
+                }
               },
               (
                 ae::GenericPixel::PixelF32(pixel),
                 ae::GenericPixelMut::PixelF32(out_pixel),
               ) => match mode {
-                1 => *out_pixel = pixel.linear_contrast(gain, 0.5),
-                2 => {
+                Mode::Modern => {
                   *out_pixel = pixel.sigmoid_contrast(gain, 0.5, min, max);
                 }
-                _ => return Err(Error::BadCallbackParameter),
+                Mode::Legacy => *out_pixel = pixel.linear_contrast(gain, 0.5),
               },
               _ => return Err(Error::BadCallbackParameter),
             }
