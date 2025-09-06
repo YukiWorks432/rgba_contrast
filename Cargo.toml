@@ -8,7 +8,15 @@ crate-type = ["cdylib"]
 
 [dependencies]
 after-effects = "0.2.1"
-rayon = "1.11.0"
 
 [build-dependencies]
 pipl = "0.1.1"
+
+[lints.rust]
+# Teach rustc about cfg names/values used by the macro to avoid `unexpected_cfgs` warnings
+unexpected_cfgs = { level = "warn", check-cfg = [
+    'cfg(does_dialog)',
+    'cfg(threaded_rendering)',
+    'cfg(smart_render)',
+    'cfg(feature, values("catch-panics"))',
+] }
