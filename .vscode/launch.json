@@ -1,0 +1,14 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "type": "lldb",
+      "request": "launch",
+      "name": "Rust Debug Launch",
+      "program": "C:\\Program Files\\Adobe\\Adobe After Effects 2025\\Support Files\\AfterFX.com",
+      "args": ["C:\\projects\\DevAePlugins\\Debug.aep"],
+      "cwd": "${workspaceRoot}/target/debug/",
+      "sourceLanguages": ["rust"]
+    }
+  ]
+}

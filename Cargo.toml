@@ -1,0 +1,14 @@
+[package]
+name = "rgba_contrast"
+version = "0.0.1"
+edition = "2024"
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+after-effects = "0.2.1"
+rayon = "1.11.0"
+
+[build-dependencies]
+pipl = "0.1.1"
