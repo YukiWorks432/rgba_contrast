@@ -241,7 +241,7 @@ impl AdobePluginGlobal for Plugin {
       "Mode",
       ae::PopupDef::setup(|f| {
         f.set_options(&["Modern", "Legacy"]);
-        f.set_default(2);
+        f.set_default(1);
         f.set_value(f.default());
       }),
     )?;
@@ -393,6 +393,8 @@ impl AdobePluginGlobal for Plugin {
         ) {
           let _ = extra.union_result_rect(in_result.result_rect.into());
           let _ = extra.union_max_result_rect(in_result.max_result_rect.into());
+        } else {
+          return Err(Error::InterruptCancel);
         }
       }
       ae::Command::SmartRender { extra } => {
