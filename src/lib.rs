@@ -7,6 +7,10 @@ enum Params {
   Blue,
   Alpha,
   Mode,
+  RPivot,
+  GPivot,
+  BPivot,
+  APivot,
 }
 #[derive(Eq, PartialEq, Hash, Clone, Copy, Debug)]
 #[repr(i32)]
@@ -43,15 +47,15 @@ impl Linear for f32 {
   }
 }
 trait LinearContrast {
-  fn linear_contrast(&self, gain: PixelF32, pivot: f32) -> Self;
+  fn linear_contrast(&self, gain: PixelF32, pivot: PixelF32) -> Self;
 }
 impl LinearContrast for PixelF32 {
-  fn linear_contrast(&self, gain: PixelF32, pivot: f32) -> Self {
+  fn linear_contrast(&self, gain: PixelF32, pivot: PixelF32) -> Self {
     Self {
-      red: self.red.linear(gain.red, pivot),
-      green: self.green.linear(gain.green, pivot),
-      blue: self.blue.linear(gain.blue, pivot),
-      alpha: self.alpha.linear(gain.alpha, pivot),
+      red: self.red.linear(gain.red, pivot.red),
+      green: self.green.linear(gain.green, pivot.green),
+      blue: self.blue.linear(gain.blue, pivot.blue),
+      alpha: self.alpha.linear(gain.alpha, pivot.alpha),
     }
   }
 }
@@ -113,7 +117,7 @@ trait SigmoidContrast {
   fn sigmoid_contrast(
     &self,
     gain: PixelF32,
-    pivot: f32,
+    pivot: PixelF32,
     min: PixelF32,
     max: PixelF32,
   ) -> Self;
@@ -122,15 +126,19 @@ impl SigmoidContrast for PixelF32 {
   fn sigmoid_contrast(
     &self,
     gain: PixelF32,
-    pivot: f32,
+    pivot: PixelF32,
     min: PixelF32,
     max: PixelF32,
   ) -> Self {
     Self {
-      red: self.red.sigmoid(gain.red, pivot, min.red, max.red),
-      green: self.green.sigmoid(gain.green, pivot, min.green, max.green),
-      blue: self.blue.sigmoid(gain.blue, pivot, min.blue, max.blue),
-      alpha: self.alpha.sigmoid(gain.alpha, pivot, min.alpha, max.alpha),
+      red: self.red.sigmoid(gain.red, pivot.red, min.red, max.red),
+      green: self
+        .green
+        .sigmoid(gain.green, pivot.green, min.green, max.green),
+      blue: self.blue.sigmoid(gain.blue, pivot.blue, min.blue, max.blue),
+      alpha: self
+        .alpha
+        .sigmoid(gain.alpha, pivot.alpha, min.alpha, max.alpha),
     }
   }
 }
@@ -223,18 +231,57 @@ impl AdobePluginGlobal for Plugin {
     _in_data: InData,
     _: OutData,
   ) -> Result<(), Error> {
-    let my_slider = |f: &mut ae::FloatSliderDef| {
+    fn gain_slider(f: &mut ae::FloatSliderDef) {
       f.set_slider_min(-100.0);
       f.set_slider_max(100.0);
       f.set_valid_min(-100.0);
       f.set_valid_max(100.0);
       f.set_default(0.0);
       f.set_precision(2);
-    };
-    params.add(Params::Red, "Red", ae::FloatSliderDef::setup(my_slider))?;
-    params.add(Params::Green, "Green", ae::FloatSliderDef::setup(my_slider))?;
-    params.add(Params::Blue, "Blue", ae::FloatSliderDef::setup(my_slider))?;
-    params.add(Params::Alpha, "Alpha", ae::FloatSliderDef::setup(my_slider))?;
+    }
+    params.add(Params::Red, "Red", ae::FloatSliderDef::setup(gain_slider))?;
+    params.add(
+      Params::Green,
+      "Green",
+      ae::FloatSliderDef::setup(gain_slider),
+    )?;
+    params.add(Params::Blue, "Blue", ae::FloatSliderDef::setup(gain_slider))?;
+    params.add(
+      Params::Alpha,
+      "Alpha",
+      ae::FloatSliderDef::setup(gain_slider),
+    )?;
+
+    fn pivot_slider(f: &mut ae::FloatSliderDef) {
+      f.set_slider_min(0.0);
+      f.set_slider_max(100.0);
+      f.set_valid_min(0.0);
+      f.set_valid_max(100.0);
+      f.set_default(50.0);
+      f.set_precision(2);
+      f.set_display_flags(ae::ValueDisplayFlag::PERCENT);
+    }
+
+    params.add(
+      Params::RPivot,
+      "Red Pivot",
+      ae::FloatSliderDef::setup(pivot_slider),
+    )?;
+    params.add(
+      Params::GPivot,
+      "Green Pivot",
+      ae::FloatSliderDef::setup(pivot_slider),
+    )?;
+    params.add(
+      Params::BPivot,
+      "Blue Pivot",
+      ae::FloatSliderDef::setup(pivot_slider),
+    )?;
+    params.add(
+      Params::APivot,
+      "Alpha Pivot",
+      ae::FloatSliderDef::setup(pivot_slider),
+    )?;
 
     params.add(
       Params::Mode,
@@ -277,6 +324,16 @@ impl AdobePluginGlobal for Plugin {
           / coef
           + coef2,
       };
+      let pivot = PixelF32 {
+        red: params.get(Params::RPivot)?.as_float_slider()?.value() as f32
+          / 100.0,
+        green: params.get(Params::GPivot)?.as_float_slider()?.value() as f32
+          / 100.0,
+        blue: params.get(Params::BPivot)?.as_float_slider()?.value() as f32
+          / 100.0,
+        alpha: params.get(Params::APivot)?.as_float_slider()?.value() as f32
+          / 100.0,
+      };
 
       let nan = PixelF32 {
         red: f32::NAN,
@@ -297,10 +354,10 @@ impl AdobePluginGlobal for Plugin {
         blue: 1.0,
         alpha: 1.0,
       };
-      let min = min_pixel.sigmoid_contrast(gain, 0.5, nan, nan);
-      let max = max_pixel.sigmoid_contrast(gain, 0.5, nan, nan);
+      let min = min_pixel.sigmoid_contrast(gain, pivot, nan, nan);
+      let max = max_pixel.sigmoid_contrast(gain, pivot, nan, nan);
 
-      Ok::<_, Error>((mode, gain, min, max))
+      Ok::<_, Error>((mode, gain, pivot, min, max))
     };
     match cmd {
       ae::Command::About => {
@@ -331,7 +388,7 @@ impl AdobePluginGlobal for Plugin {
       } => {
         let progress_final = out_layer.height() as _;
 
-        let (mode, gain, min, max) = get_params()?;
+        let (mode, gain, pivot, min, max) = get_params()?;
 
         in_layer.iterate_with(
           &mut out_layer,
@@ -351,12 +408,12 @@ impl AdobePluginGlobal for Plugin {
                 Mode::Modern => {
                   *out_pixel = pixel
                     .to_pixel32()
-                    .sigmoid_contrast(gain, 0.5, min, max)
+                    .sigmoid_contrast(gain, pivot, min, max)
                     .to_pixel8()
                 }
                 Mode::Legacy => {
                   *out_pixel =
-                    pixel.to_pixel32().linear_contrast(gain, 0.5).to_pixel8()
+                    pixel.to_pixel32().linear_contrast(gain, pivot).to_pixel8()
                 }
               },
               (
@@ -366,12 +423,12 @@ impl AdobePluginGlobal for Plugin {
                 Mode::Modern => {
                   *out_pixel = pixel
                     .to_pixel32()
-                    .sigmoid_contrast(gain, 0.5, min, max)
+                    .sigmoid_contrast(gain, pivot, min, max)
                     .to_pixel16()
                 }
                 Mode::Legacy => {
                   *out_pixel =
-                    pixel.to_pixel32().linear_contrast(gain, 0.5).to_pixel16()
+                    pixel.to_pixel32().linear_contrast(gain, pivot).to_pixel16()
                 }
               },
               _ => return Err(Error::BadCallbackParameter),
@@ -404,7 +461,7 @@ impl AdobePluginGlobal for Plugin {
 
         let progress_final = output_world.height() as _;
 
-        let (mode, gain, min, max) = get_params()?;
+        let (mode, gain, pivot, min, max) = get_params()?;
 
         input_world.iterate_with(
           &mut output_world,
@@ -424,12 +481,12 @@ impl AdobePluginGlobal for Plugin {
                 Mode::Modern => {
                   *out_pixel = pixel
                     .to_pixel32()
-                    .sigmoid_contrast(gain, 0.5, min, max)
+                    .sigmoid_contrast(gain, pivot, min, max)
                     .to_pixel8();
                 }
                 Mode::Legacy => {
                   *out_pixel =
-                    pixel.to_pixel32().linear_contrast(gain, 0.5).to_pixel8()
+                    pixel.to_pixel32().linear_contrast(gain, pivot).to_pixel8()
                 }
               },
               (
@@ -439,12 +496,12 @@ impl AdobePluginGlobal for Plugin {
                 Mode::Modern => {
                   *out_pixel = pixel
                     .to_pixel32()
-                    .sigmoid_contrast(gain, 0.5, min, max)
+                    .sigmoid_contrast(gain, pivot, min, max)
                     .to_pixel16();
                 }
                 Mode::Legacy => {
                   *out_pixel =
-                    pixel.to_pixel32().linear_contrast(gain, 0.5).to_pixel16()
+                    pixel.to_pixel32().linear_contrast(gain, pivot).to_pixel16()
                 }
               },
               (
@@ -452,9 +509,9 @@ impl AdobePluginGlobal for Plugin {
                 ae::GenericPixelMut::PixelF32(out_pixel),
               ) => match mode {
                 Mode::Modern => {
-                  *out_pixel = pixel.sigmoid_contrast(gain, 0.5, min, max);
+                  *out_pixel = pixel.sigmoid_contrast(gain, pivot, min, max);
                 }
-                Mode::Legacy => *out_pixel = pixel.linear_contrast(gain, 0.5),
+                Mode::Legacy => *out_pixel = pixel.linear_contrast(gain, pivot),
               },
               _ => return Err(Error::BadCallbackParameter),
             }
