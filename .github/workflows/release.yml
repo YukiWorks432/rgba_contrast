@@ -1,0 +1,161 @@
+name: Release
+
+on:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  prepare:
+    name: リリース要否を確認する
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      tag: ${{ steps.tag.outputs.tag }}
+      prerelease: ${{ steps.tag.outputs.prerelease }}
+      should_release: ${{ steps.tag.outputs.should_release }}
+    steps:
+      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
+
+      - id: version
+        name: Cargo.toml のバージョンを検証する
+        run: |
+          python3 - <<'PY' >> "$GITHUB_OUTPUT"
+          import re
+          import tomllib
+
+          with open("Cargo.toml", "rb") as cargo_toml:
+              version = tomllib.load(cargo_toml)["package"]["version"]
+
+          identifier = r"(?:0|[1-9]\d*|\d*[A-Za-z-][0-9A-Za-z-]*)"
+          semver = re.compile(
+              rf"(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)"
+              rf"(?:-{identifier}(?:\.{identifier})*)?"
+              r"(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?"
+          )
+          if not semver.fullmatch(version):
+              raise SystemExit(f"Cargo.toml の version は有効な SemVer ではありません: {version}")
+
+          print(f"version={version}")
+          PY
+
+      - id: tag
+        name: 既存タグを確認する
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          tag="v${VERSION}"
+          if git ls-remote --exit-code --tags origin "refs/tags/${tag}" "refs/tags/${VERSION}" >/dev/null; then
+            echo "should_release=false" >> "$GITHUB_OUTPUT"
+            echo "${tag} または ${VERSION} は既に存在するため、リリースを作成しません。"
+          else
+            echo "should_release=true" >> "$GITHUB_OUTPUT"
+          fi
+
+          if [[ "${VERSION}" == *-* ]]; then
+            echo "prerelease=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "prerelease=false" >> "$GITHUB_OUTPUT"
+          fi
+          echo "tag=${tag}" >> "$GITHUB_OUTPUT"
+
+  build:
+    name: ${{ matrix.platform }} 版をビルドする
+    needs: prepare
+    if: needs.prepare.outputs.should_release == 'true'
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            platform: Windows
+            artifact_name: release-windows
+          - os: macos-latest
+            platform: macOS
+            artifact_name: release-macos
+    runs-on: ${{ matrix.os }}
+    env:
+      VERSION: ${{ needs.prepare.outputs.version }}
+    steps:
+      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
+
+      - name: Stable Rust を準備する
+        run: |
+          rustup toolchain install stable --profile minimal
+          rustup default stable
+
+      - name: Windows 用アーカイブを作成する
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          cargo build --release
+          New-Item -ItemType Directory -Path release -Force | Out-Null
+          Copy-Item -Force target\release\rgba_contrast.dll target\release\rgba_contrast.aex
+          Compress-Archive -LiteralPath target\release\rgba_contrast.aex -DestinationPath "release\rgba_contrast-v$env:VERSION-windows.zip" -Force
+
+      - name: macOS 用アーカイブを作成する
+        if: runner.os == 'macOS'
+        shell: bash
+        run: |
+          cargo install just --version 1.42.4 --locked
+          NO_INSTALL=1 just release
+          lipo -verify_arch x86_64 arm64 target/release/rgba_contrast.plugin/Contents/MacOS/rgba_contrast
+          mkdir -p release
+          ditto -c -k --keepParent target/release/rgba_contrast.plugin "release/rgba_contrast-v${VERSION}-macos.zip"
+
+      - name: Release 成果物を保存する
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: ${{ matrix.artifact_name }}
+          path: release/*.zip
+          if-no-files-found: error
+          retention-days: 1
+
+  release:
+    name: GitHub Release を作成する
+    needs:
+      - prepare
+      - build
+    if: needs.prepare.outputs.should_release == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    env:
+      TAG: ${{ needs.prepare.outputs.tag }}
+      PRERELEASE: ${{ needs.prepare.outputs.prerelease }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - name: 成果物を取得する
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          pattern: release-*
+          merge-multiple: true
+          path: release
+
+      - name: SHA-256 を作成する
+        working-directory: release
+        run: sha256sum -- ./*.zip > SHA256SUMS.txt
+
+      - name: Release を公開する
+        run: |
+          notes=$'## インストール\n\n- Windows: ZIP を展開し、`rgba_contrast.aex` を Adobe の Plug-ins ディレクトリへコピーしてください。\n- macOS: ZIP を展開し、`rgba_contrast.plugin` を Adobe の Plug-ins ディレクトリへコピーしてください。\n\n## macOS の署名\n\nmacOS 版は ad-hoc 署名済みです。Developer ID 署名および notarization は行っていません。'
+          arguments=(
+            "$TAG"
+            release/*.zip
+            release/SHA256SUMS.txt
+            --target "$GITHUB_SHA"
+            --title "$TAG"
+            --notes "$notes"
+            --generate-notes
+          )
+          if [[ "$PRERELEASE" == "true" ]]; then
+            arguments+=(--prerelease)
+          fi
+          gh release create "${arguments[@]}"

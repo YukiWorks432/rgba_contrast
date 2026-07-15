@@ -1,0 +1,4 @@
+interface:
+  display_name: "RGBA Contrast Release"
+  short_description: "リリース前検査と PR 準備を支援"
+  default_prompt: "Use $rgba-contrast-release to prepare the next RGBA Contrast release."

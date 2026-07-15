@@ -1,6 +1,6 @@
 [package]
 name = "rgba_contrast"
-version = "0.0.1"
+version = "1.0.0"
 edition = "2024"
 
 [lib]
