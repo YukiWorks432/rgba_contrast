@@ -1,3 +1,9 @@
+#![allow(
+  clippy::drop_non_drop,
+  clippy::question_mark,
+  reason = "after-effects の外部マクロ展開で発生するため"
+)]
+
 use after_effects as ae;
 
 #[derive(Eq, PartialEq, Hash, Clone, Copy, Debug)]
