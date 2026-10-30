@@ -8,6 +8,7 @@ crate-type = ["cdylib"]
 
 [dependencies]
 after-effects = "0.2.1"
+palette = { version = "0.7.7", default-features = false, features = ["std"] }
 
 [build-dependencies]
 pipl = "0.1.1"
