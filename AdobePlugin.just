@@ -38,15 +38,16 @@ create_bundle profile target_dir:
         rustup target add aarch64-apple-darwin x86_64-apple-darwin
         cargo build --locked --release --target x86_64-apple-darwin
         cargo build --locked --release --target aarch64-apple-darwin
-        resource_dir="$target_dir/x86_64-apple-darwin/release"
-        lipo "$resource_dir/lib{{BinaryName}}.dylib" "$target_dir/aarch64-apple-darwin/release/lib{{BinaryName}}.dylib" -create -output "$plugin_path/Contents/MacOS/$PluginName"
+        cp "$target_dir/x86_64-apple-darwin/release/{{BinaryName}}.rsrc" "$plugin_path/Contents/Resources/$PluginName.rsrc"
+        cp "$target_dir/x86_64-apple-darwin/release/{{BinaryName}}_PkgInfo" "$plugin_path/Contents/PkgInfo"
+        cp "$target_dir/x86_64-apple-darwin/release/{{BinaryName}}_Info.plist" "$plugin_path/Contents/Info.plist"
+        lipo "$target_dir/x86_64-apple-darwin/release/lib{{BinaryName}}.dylib" "$target_dir/aarch64-apple-darwin/release/lib{{BinaryName}}.dylib" -create -output "$plugin_path/Contents/MacOS/$PluginName"
     else
-        resource_dir="$target_dir/$profile"
-        cp "$resource_dir/lib{{BinaryName}}.dylib" "$plugin_path/Contents/MacOS/$PluginName"
+        cp "$target_dir/$profile/{{BinaryName}}.rsrc" "$plugin_path/Contents/Resources/$PluginName.rsrc"
+        cp "$target_dir/$profile/{{BinaryName}}_PkgInfo" "$plugin_path/Contents/PkgInfo"
+        cp "$target_dir/$profile/{{BinaryName}}_Info.plist" "$plugin_path/Contents/Info.plist"
+        cp "$target_dir/$profile/lib{{BinaryName}}.dylib" "$plugin_path/Contents/MacOS/$PluginName"
     fi
-    cp "$resource_dir/{{BinaryName}}.rsrc" "$plugin_path/Contents/Resources/$PluginName.rsrc"
-    cp "$resource_dir/{{BinaryName}}_PkgInfo" "$plugin_path/Contents/PkgInfo"
-    cp "$resource_dir/{{BinaryName}}_Info.plist" "$plugin_path/Contents/Info.plist"
     /usr/libexec/PlistBuddy -c 'Set :CFBundleIdentifier "{{BundleIdentifier}}"' "$plugin_path/Contents/Info.plist"
 
     DEV_CERT=$(security find-identity -v -p codesigning | awk '/Apple Development/ {print $2; exit}')

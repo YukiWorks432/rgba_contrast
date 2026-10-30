@@ -66,7 +66,8 @@ Rustに加えて `just`、`uv`、Python 3.11以上を用意し、リポジトリ
 | `just build` | 開発用ビルドを生成します。 |
 | `just release` | 最適化ビルドを生成します。Windowsは `.aex`、macOSは署名付きユニバーサル `.plugin` を作成します。 |
 | `just install-plan [配置先]` | ビルド・書き込みをせず、生成先と配置先を表示します。 |
-| `just install [配置先]` | `just release` の成功後、対象プラグインを配置して完了を待ちます。 |
+| `just install [配置先]` | `just release` の成功後、対象プラグインを検査・配置して完了を待ちます。 |
+| `just test-tools` | 配置とリリース補助の契約を検証します。 |
 
 `build`と`release`からの自動インストールは廃止しました。インストールには`just install`を使用してください。`NO_INSTALL`の指定は不要です。
 
@@ -78,6 +79,8 @@ Rustに加えて `just`、`uv`、Python 3.11以上を用意し、リポジトリ
 just install-plan "target/test plugins"
 just install "target/test plugins"
 ```
+
+配置前に、生成物と同名の配置済みプラグインのOS形式、公開入口 `EffectMain`、PiPLの表示名 `RGBA Contrast` とMatch Name `HANAYUKI RGBA Contrast` を検査します。別製品や破損ファイルは上書きしません。macOSではバンドル識別子と署名も検証するため、Xcodeのコマンドラインツールが必要です。
 
 ビルドに失敗した場合は配置せず、複写や置換に失敗した場合も既存ファイルを保持します。macOSのバンドルは一時領域で複写してから置換するため、旧版だけに存在したファイルが残りません。書き込み権限が必要な配置先は、権限を持つ端末から実行してください。使用中のプラグインを更新できない場合はAfter Effects／Premiere Proを終了して再実行してください。
 
