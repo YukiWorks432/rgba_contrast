@@ -11,7 +11,7 @@ permissions:
 jobs:
   ci:
     name: ci
-    runs-on: ubuntu-latest
+    runs-on: windows-latest
     steps:
       - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
 
@@ -24,17 +24,16 @@ jobs:
         run: cargo fmt --check
 
       - name: Lint を検証する
-        run: cargo clippy -- -D warnings
+        run: cargo clippy --locked -- -D warnings
 
       - name: テストを実行する
-        run: cargo test
+        run: cargo test --locked
 
-  windows-pipl:
-    name: Windows版のPiPLを検証する
-    runs-on: windows-latest
-    steps:
-      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
+      - name: リリース条件を検証する
+        run: python -m unittest discover -s tests
+
       - name: プラグインをビルドする
         run: cargo build --release --locked
+
       - name: ビルド済みプラグインの登録情報を検証する
         run: python scripts/verify_pipl.py target/release/rgba_contrast.dll

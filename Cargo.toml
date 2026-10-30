@@ -7,14 +7,11 @@ edition = "2024"
 crate-type = ["cdylib"]
 
 [dependencies]
-after-effects = "0.2.1"
+after-effects = { git = "https://github.com/virtualritz/after-effects.git", rev = "83dcc93734fd5db1335b6ec83cba7a6505a39dcc" }
 palette = { version = "0.7.7", default-features = false, features = ["std"] }
 
 [build-dependencies]
-pipl = "0.1.1"
-
-[target.'cfg(windows)'.build-dependencies]
-winres = "0.1.12"
+pipl = { git = "https://github.com/virtualritz/after-effects.git", rev = "83dcc93734fd5db1335b6ec83cba7a6505a39dcc" }
 
 [lints.rust]
 # Teach rustc about cfg names/values used by the macro to avoid `unexpected_cfgs` warnings

@@ -90,10 +90,6 @@ struct Plugin {}
 ae::define_effect!(Plugin, (), Params);
 
 impl AdobePluginGlobal for Plugin {
-  fn can_load(_host_name: &str, _host_version: &str) -> bool {
-    true
-  }
-
   fn params_setup(
     &self,
     params: &mut ae::Parameters<Params>,
@@ -243,7 +239,7 @@ impl AdobePluginGlobal for Plugin {
   }
 
   fn handle_command(
-    &mut self,
+    &self,
     cmd: ae::Command,
     in_data: InData,
     mut out_data: OutData,
@@ -366,7 +362,7 @@ impl AdobePluginGlobal for Plugin {
             (gamma, format!("{} Gamma", labels[i])),
           ] {
             let mut p = params.get_mut(id)?;
-            p.set_name(&label);
+            p.set_name(&label)?;
             p.update_param_ui()?;
           }
         }
@@ -478,9 +474,14 @@ impl AdobePluginGlobal for Plugin {
         let input_world = if input_empty {
           None
         } else {
-          Some(cb.checkout_layer_pixels(0)?)
+          cb.checkout_layer_pixels(0)?
         };
-        let mut output_world = cb.checkout_output()?;
+        let Some(mut output_world) = cb.checkout_output()? else {
+          if input_world.is_some() {
+            cb.checkin_layer_pixels(0)?;
+          }
+          return Ok(());
+        };
         let adjustment = get_params()?;
         if in_data.is_premiere() {
           premiere::render(
