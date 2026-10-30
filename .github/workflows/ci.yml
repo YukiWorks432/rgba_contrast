@@ -28,3 +28,6 @@ jobs:
 
       - name: テストを実行する
         run: cargo test --locked
+
+      - name: リリース条件を検証する
+        run: python3 -m unittest discover -s tests

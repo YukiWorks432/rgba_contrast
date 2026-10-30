@@ -50,3 +50,9 @@ Modernは黒と白を保つように正規化したシグモイド曲線で調�
 4. `Cargo.toml` と `Cargo.lock` を同じ PR に含め、取り込む修正、API 対応、検証結果と未確認の環境を記録します。
 
 `rev` を固定しているため、ビルドや `cargo update` だけで別の上流コミットへ切り替わることはありません。
+
+## 開発とリリース
+
+通常の作業ブランチは `main` から作り、変更は `main` 向けの PR で統合します。`main` への直接プッシュは行いません。
+
+リリース時は `main` から `release/v<version>` ブランチを作り、`Cargo.toml` と必要な `Cargo.lock` の版番号を更新した PR を作成します。PR を `main` にマージすると、GitHub Actions がそのマージコミットから Windows / macOS の成果物を構築し、成功後にタグと GitHub Release を作成します。通常の開発 PR では公開されません。詳しい検証と失敗時の対応は `.codex/skills/rgba-contrast-release/SKILL.md` を参照してください。
