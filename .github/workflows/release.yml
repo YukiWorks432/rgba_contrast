@@ -1,50 +1,49 @@
 name: Release
 
 on:
-  push:
-    branches:
-      - main
+  pull_request:
+    types: [closed]
+    branches: [main]
 
 permissions:
   contents: read
 
 concurrency:
-  group: release-${{ github.ref }}
+  group: release-publish
   cancel-in-progress: false
 
 jobs:
   prepare:
     name: リリース要否を確認する
+    if: >-
+      github.event.pull_request.merged == true &&
+      startsWith(github.event.pull_request.head.ref, 'release/v')
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: read
     outputs:
       version: ${{ steps.version.outputs.version }}
       tag: ${{ steps.tag.outputs.tag }}
       prerelease: ${{ steps.tag.outputs.prerelease }}
       should_release: ${{ steps.tag.outputs.should_release }}
+      target_sha: ${{ github.event.pull_request.merge_commit_sha }}
     steps:
       - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
+        with:
+          ref: ${{ github.event.pull_request.merge_commit_sha }}
+          fetch-depth: 2
 
       - id: version
-        name: Cargo.toml のバージョンを検証する
+        name: 公開対象のPRと版を検証する
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
         run: |
-          python3 - <<'PY' >> "$GITHUB_OUTPUT"
-          import re
-          import tomllib
-
-          with open("Cargo.toml", "rb") as cargo_toml:
-              version = tomllib.load(cargo_toml)["package"]["version"]
-
-          identifier = r"(?:0|[1-9]\d*|\d*[A-Za-z-][0-9A-Za-z-]*)"
-          semver = re.compile(
-              rf"(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)"
-              rf"(?:-{identifier}(?:\.{identifier})*)?"
-              r"(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?"
-          )
-          if not semver.fullmatch(version):
-              raise SystemExit(f"Cargo.toml の version は有効な SemVer ではありません: {version}")
-
-          print(f"version={version}")
-          PY
+          set -euo pipefail
+          gh api --paginate --slurp "repos/${GITHUB_REPOSITORY}/pulls/${PR_NUMBER}/files" > "$RUNNER_TEMP/release-files.json"
+          git show "${{ github.event.pull_request.merge_commit_sha }}^:Cargo.toml" > "$RUNNER_TEMP/previous-Cargo.toml"
+          python3 scripts/validate_release.py "$GITHUB_EVENT_PATH" "$RUNNER_TEMP/release-files.json" "$RUNNER_TEMP/previous-Cargo.toml" >> "$GITHUB_OUTPUT"
 
       - id: tag
         name: 既存タグを確認する
@@ -52,14 +51,16 @@ jobs:
           VERSION: ${{ steps.version.outputs.version }}
         run: |
           tag="v${VERSION}"
-          if git ls-remote --exit-code --tags origin "refs/tags/${tag}" "refs/tags/${VERSION}" >/dev/null; then
+          set -euo pipefail
+          existing=$(git ls-remote --tags origin "refs/tags/${tag}" "refs/tags/${VERSION}")
+          if [ -n "$existing" ]; then
             echo "should_release=false" >> "$GITHUB_OUTPUT"
             echo "${tag} または ${VERSION} は既に存在するため、リリースを作成しません。"
           else
             echo "should_release=true" >> "$GITHUB_OUTPUT"
           fi
 
-          if [[ "${VERSION}" == *-* ]]; then
+          if [[ "${VERSION%%+*}" == *-* ]]; then
             echo "prerelease=true" >> "$GITHUB_OUTPUT"
           else
             echo "prerelease=false" >> "$GITHUB_OUTPUT"
@@ -85,6 +86,8 @@ jobs:
       VERSION: ${{ needs.prepare.outputs.version }}
     steps:
       - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
+        with:
+          ref: ${{ github.event.pull_request.merge_commit_sha }}
 
       - name: Stable Rust を準備する
         run: |
@@ -95,7 +98,7 @@ jobs:
         if: runner.os == 'Windows'
         shell: pwsh
         run: |
-          cargo build --release
+          cargo build --locked --release
           New-Item -ItemType Directory -Path release -Force | Out-Null
           Copy-Item -Force target\release\rgba_contrast.dll target\release\rgba_contrast.aex
           Compress-Archive -LiteralPath target\release\rgba_contrast.aex -DestinationPath "release\rgba_contrast-v$env:VERSION-windows.zip" -Force
@@ -131,6 +134,8 @@ jobs:
       TAG: ${{ needs.prepare.outputs.tag }}
       PRERELEASE: ${{ needs.prepare.outputs.prerelease }}
       GH_TOKEN: ${{ github.token }}
+      TARGET_SHA: ${{ needs.prepare.outputs.target_sha }}
+      GH_REPO: ${{ github.repository }}
     steps:
       - name: 成果物を取得する
         uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
@@ -150,7 +155,7 @@ jobs:
             "$TAG"
             release/*.zip
             release/SHA256SUMS.txt
-            --target "$GITHUB_SHA"
+            --target "$TARGET_SHA"
             --title "$TAG"
             --notes "$notes"
             --generate-notes

@@ -5,6 +5,10 @@
 )]
 
 use after_effects as ae;
+mod contrast;
+mod pixels;
+use contrast::{LinearContrast, SigmoidCurves};
+use pixels::ToPixel;
 
 #[derive(Eq, PartialEq, Hash, Clone, Copy, Debug)]
 enum Params {
@@ -41,196 +45,7 @@ struct Plugin {}
 
 ae::define_effect!(Plugin, (), Params);
 
-const EPS: f32 = 1e-12;
-
-trait Linear {
-  fn linear(&self, gain: f32, pivot: f32) -> Self;
-}
-
-impl Linear for f32 {
-  fn linear(&self, gain: f32, pivot: f32) -> Self {
-    (self - pivot) * gain + pivot
-  }
-}
-trait LinearContrast {
-  fn linear_contrast(&self, gain: PixelF32, pivot: PixelF32) -> Self;
-}
-impl LinearContrast for PixelF32 {
-  fn linear_contrast(&self, gain: PixelF32, pivot: PixelF32) -> Self {
-    Self {
-      red: self.red.linear(gain.red, pivot.red),
-      green: self.green.linear(gain.green, pivot.green),
-      blue: self.blue.linear(gain.blue, pivot.blue),
-      alpha: self.alpha.linear(gain.alpha, pivot.alpha),
-    }
-  }
-}
-trait NormalSigmoid {
-  fn normal_sigmoid(&self, gain: f32, pivot: f32, min: f32, max: f32) -> Self;
-}
-impl NormalSigmoid for f32 {
-  fn normal_sigmoid(&self, gain: f32, pivot: f32, min: f32, max: f32) -> Self {
-    if !gain.is_finite() {
-      return *self;
-    }
-    if !min.is_finite() && !max.is_finite() {
-      return 1.0 / (1.0 + (gain * (pivot - *self)).exp());
-    }
-    ((1.0 / (1.0 + (gain * (pivot - *self)).exp())) - min) / (max - min)
-  }
-}
-trait InverseSigmoid {
-  fn inverse_sigmoid(&self, gain: f32, pivot: f32, min: f32, max: f32) -> Self;
-}
-impl InverseSigmoid for f32 {
-  fn inverse_sigmoid(&self, gain: f32, pivot: f32, min: f32, max: f32) -> Self {
-    if !gain.is_finite() {
-      return *self;
-    }
-
-    let s0 = 1.0 / (1.0 + (gain * pivot).exp());
-    let s1 = 1.0 / (1.0 + (gain * (pivot - 1.0)).exp());
-    let s = s0 + *self * (s1 - s0);
-
-    // numerical safety
-    let s_clamped = s.clamp(EPS, 1.0 - EPS);
-
-    if !min.is_finite() && !max.is_finite() {
-      return pivot - (1.0 / gain) * ((1.0 - s_clamped) / s_clamped).ln();
-    }
-
-    (pivot - (1.0 / gain) * ((1.0 - s_clamped) / s_clamped).ln() - min)
-      / (max - min)
-  }
-}
-
-trait Sigmoid {
-  fn sigmoid(&self, gain: f32, pivot: f32, min: f32, max: f32) -> Self;
-}
-impl Sigmoid for f32 {
-  fn sigmoid(&self, gain: f32, pivot: f32, min: f32, max: f32) -> Self {
-    if gain > EPS {
-      self.normal_sigmoid(gain, pivot, min, max)
-    } else if gain < -EPS {
-      self.inverse_sigmoid(gain, pivot, min, max)
-    } else {
-      *self
-    }
-  }
-}
-
-trait SigmoidContrast {
-  fn sigmoid_contrast(
-    &self,
-    gain: PixelF32,
-    pivot: PixelF32,
-    min: PixelF32,
-    max: PixelF32,
-  ) -> Self;
-}
-impl SigmoidContrast for PixelF32 {
-  fn sigmoid_contrast(
-    &self,
-    gain: PixelF32,
-    pivot: PixelF32,
-    min: PixelF32,
-    max: PixelF32,
-  ) -> Self {
-    Self {
-      red: self.red.sigmoid(gain.red, pivot.red, min.red, max.red),
-      green: self
-        .green
-        .sigmoid(gain.green, pivot.green, min.green, max.green),
-      blue: self.blue.sigmoid(gain.blue, pivot.blue, min.blue, max.blue),
-      alpha: self
-        .alpha
-        .sigmoid(gain.alpha, pivot.alpha, min.alpha, max.alpha),
-    }
-  }
-}
-
-trait ToPixel {
-  fn to_pixel32(&self) -> PixelF32;
-  fn to_pixel16(&self) -> Pixel16;
-  fn to_pixel8(&self) -> Pixel8;
-}
-impl ToPixel for Pixel8 {
-  fn to_pixel32(&self) -> PixelF32 {
-    PixelF32 {
-      red: self.red as f32 / ae::MAX_CHANNEL8 as f32,
-      green: self.green as f32 / ae::MAX_CHANNEL8 as f32,
-      blue: self.blue as f32 / ae::MAX_CHANNEL8 as f32,
-      alpha: self.alpha as f32 / ae::MAX_CHANNEL8 as f32,
-    }
-  }
-  fn to_pixel16(&self) -> Pixel16 {
-    Pixel16 {
-      red: (self.red as f32 / ae::MAX_CHANNEL8 as f32
-        * ae::MAX_CHANNEL16 as f32) as u16,
-      green: (self.green as f32 / ae::MAX_CHANNEL8 as f32
-        * ae::MAX_CHANNEL16 as f32) as u16,
-      blue: (self.blue as f32 / ae::MAX_CHANNEL8 as f32
-        * ae::MAX_CHANNEL16 as f32) as u16,
-      alpha: (self.alpha as f32 / ae::MAX_CHANNEL8 as f32
-        * ae::MAX_CHANNEL16 as f32) as u16,
-    }
-  }
-  fn to_pixel8(&self) -> Pixel8 {
-    *self
-  }
-}
-impl ToPixel for Pixel16 {
-  fn to_pixel32(&self) -> PixelF32 {
-    PixelF32 {
-      red: self.red as f32 / ae::MAX_CHANNEL16 as f32,
-      green: self.green as f32 / ae::MAX_CHANNEL16 as f32,
-      blue: self.blue as f32 / ae::MAX_CHANNEL16 as f32,
-      alpha: self.alpha as f32 / ae::MAX_CHANNEL16 as f32,
-    }
-  }
-  fn to_pixel16(&self) -> Pixel16 {
-    *self
-  }
-  fn to_pixel8(&self) -> Pixel8 {
-    Pixel8 {
-      red: (self.red as f32 / ae::MAX_CHANNEL16 as f32
-        * ae::MAX_CHANNEL8 as f32) as u8,
-      green: (self.green as f32 / ae::MAX_CHANNEL16 as f32
-        * ae::MAX_CHANNEL8 as f32) as u8,
-      blue: (self.blue as f32 / ae::MAX_CHANNEL16 as f32
-        * ae::MAX_CHANNEL8 as f32) as u8,
-      alpha: (self.alpha as f32 / ae::MAX_CHANNEL16 as f32
-        * ae::MAX_CHANNEL8 as f32) as u8,
-    }
-  }
-}
-impl ToPixel for PixelF32 {
-  fn to_pixel32(&self) -> PixelF32 {
-    *self
-  }
-  fn to_pixel16(&self) -> Pixel16 {
-    Pixel16 {
-      red: (self.red.clamp(0.0, 1.0) * ae::MAX_CHANNEL16 as f32) as u16,
-      green: (self.green.clamp(0.0, 1.0) * ae::MAX_CHANNEL16 as f32) as u16,
-      blue: (self.blue.clamp(0.0, 1.0) * ae::MAX_CHANNEL16 as f32) as u16,
-      alpha: (self.alpha.clamp(0.0, 1.0) * ae::MAX_CHANNEL16 as f32) as u16,
-    }
-  }
-  fn to_pixel8(&self) -> Pixel8 {
-    Pixel8 {
-      red: (self.red.clamp(0.0, 1.0) * ae::MAX_CHANNEL8 as f32) as u8,
-      green: (self.green.clamp(0.0, 1.0) * ae::MAX_CHANNEL8 as f32) as u8,
-      blue: (self.blue.clamp(0.0, 1.0) * ae::MAX_CHANNEL8 as f32) as u8,
-      alpha: (self.alpha.clamp(0.0, 1.0) * ae::MAX_CHANNEL8 as f32) as u8,
-    }
-  }
-}
-
 impl AdobePluginGlobal for Plugin {
-  fn can_load(_host_name: &str, _host_version: &str) -> bool {
-    true
-  }
-
   fn params_setup(
     &self,
     params: &mut ae::Parameters<Params>,
@@ -303,7 +118,7 @@ impl AdobePluginGlobal for Plugin {
   }
 
   fn handle_command(
-    &mut self,
+    &self,
     cmd: ae::Command,
     in_data: InData,
     mut out_data: OutData,
@@ -341,29 +156,7 @@ impl AdobePluginGlobal for Plugin {
           / 100.0,
       };
 
-      let nan = PixelF32 {
-        red: f32::NAN,
-        green: f32::NAN,
-        blue: f32::NAN,
-        alpha: f32::NAN,
-      };
-
-      let min_pixel = PixelF32 {
-        red: 0.0,
-        green: 0.0,
-        blue: 0.0,
-        alpha: 0.0,
-      };
-      let max_pixel = PixelF32 {
-        red: 1.0,
-        green: 1.0,
-        blue: 1.0,
-        alpha: 1.0,
-      };
-      let min = min_pixel.sigmoid_contrast(gain, pivot, nan, nan);
-      let max = max_pixel.sigmoid_contrast(gain, pivot, nan, nan);
-
-      Ok::<_, Error>((mode, gain, pivot, min, max))
+      Ok::<_, Error>((mode, gain, pivot))
     };
     match cmd {
       ae::Command::About => {
@@ -394,7 +187,8 @@ impl AdobePluginGlobal for Plugin {
       } => {
         let progress_final = out_layer.height() as _;
 
-        let (mode, gain, pivot, min, max) = get_params()?;
+        let (mode, gain, pivot) = get_params()?;
+        let curves = SigmoidCurves::new(gain, pivot);
 
         in_layer.iterate_with(
           &mut out_layer,
@@ -412,10 +206,7 @@ impl AdobePluginGlobal for Plugin {
                 ae::GenericPixelMut::Pixel8(out_pixel),
               ) => match mode {
                 Mode::Modern => {
-                  *out_pixel = pixel
-                    .to_pixel32()
-                    .sigmoid_contrast(gain, pivot, min, max)
-                    .to_pixel8()
+                  *out_pixel = curves.apply(pixel.to_pixel32()).to_pixel8()
                 }
                 Mode::Legacy => {
                   *out_pixel =
@@ -427,10 +218,7 @@ impl AdobePluginGlobal for Plugin {
                 ae::GenericPixelMut::Pixel16(out_pixel),
               ) => match mode {
                 Mode::Modern => {
-                  *out_pixel = pixel
-                    .to_pixel32()
-                    .sigmoid_contrast(gain, pivot, min, max)
-                    .to_pixel16()
+                  *out_pixel = curves.apply(pixel.to_pixel32()).to_pixel16()
                 }
                 Mode::Legacy => {
                   *out_pixel =
@@ -462,12 +250,18 @@ impl AdobePluginGlobal for Plugin {
       }
       ae::Command::SmartRender { extra } => {
         let cb = extra.callbacks();
-        let input_world = cb.checkout_layer_pixels(0)?;
-        let mut output_world = cb.checkout_output()?;
+        // 下にレイヤーのない調整レイヤーなどでは、描画対象が返らない。
+        let Some(input_world) = cb.checkout_layer_pixels(0)? else {
+          return Ok(());
+        };
+        let Some(mut output_world) = cb.checkout_output()? else {
+          return cb.checkin_layer_pixels(0);
+        };
 
         let progress_final = output_world.height() as _;
 
-        let (mode, gain, pivot, min, max) = get_params()?;
+        let (mode, gain, pivot) = get_params()?;
+        let curves = SigmoidCurves::new(gain, pivot);
 
         input_world.iterate_with(
           &mut output_world,
@@ -485,10 +279,7 @@ impl AdobePluginGlobal for Plugin {
                 ae::GenericPixelMut::Pixel8(out_pixel),
               ) => match mode {
                 Mode::Modern => {
-                  *out_pixel = pixel
-                    .to_pixel32()
-                    .sigmoid_contrast(gain, pivot, min, max)
-                    .to_pixel8();
+                  *out_pixel = curves.apply(pixel.to_pixel32()).to_pixel8();
                 }
                 Mode::Legacy => {
                   *out_pixel =
@@ -500,10 +291,7 @@ impl AdobePluginGlobal for Plugin {
                 ae::GenericPixelMut::Pixel16(out_pixel),
               ) => match mode {
                 Mode::Modern => {
-                  *out_pixel = pixel
-                    .to_pixel32()
-                    .sigmoid_contrast(gain, pivot, min, max)
-                    .to_pixel16();
+                  *out_pixel = curves.apply(pixel.to_pixel32()).to_pixel16();
                 }
                 Mode::Legacy => {
                   *out_pixel =
@@ -515,7 +303,7 @@ impl AdobePluginGlobal for Plugin {
                 ae::GenericPixelMut::PixelF32(out_pixel),
               ) => match mode {
                 Mode::Modern => {
-                  *out_pixel = pixel.sigmoid_contrast(gain, pivot, min, max);
+                  *out_pixel = curves.apply(*pixel);
                 }
                 Mode::Legacy => *out_pixel = pixel.linear_contrast(gain, pivot),
               },
