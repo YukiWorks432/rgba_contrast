@@ -1,4 +1,4 @@
-PluginName       := "rgba_contrast"
+export PluginName := "rgba_contrast"
 BundleIdentifier := "com.hanayuki.AfterEffects." + PluginName
 BinaryName       := lowercase(PluginName)
 

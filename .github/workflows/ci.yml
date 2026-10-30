@@ -29,5 +29,5 @@ jobs:
       - name: テストを実行する
         run: cargo test --locked
 
-      - name: リリース条件を検証する
+      - name: ビルド補助とリリース条件を検証する
         run: python -m unittest discover -s tests

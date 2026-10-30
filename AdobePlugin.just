@@ -1,75 +1,74 @@
 set windows-shell := ["powershell.exe", "-NoLogo", "-Command"]
 
-TargetDir := env_var_or_default("CARGO_TARGET_DIR", "target")
+export TargetDir := env_var_or_default("CARGO_TARGET_DIR", "target")
+export CARGO_TARGET_DIR := TargetDir
+export PYTHONUTF8 := "1"
 
 [windows]
 build:
     cargo build --locked
-    if (-not $env:NO_INSTALL) { \
-        Start-Process PowerShell -Verb runAs -ArgumentList "-command Set-Location '{{source_directory()}}'; Copy-Item -Force '{{TargetDir}}\debug\{{BinaryName}}.dll' 'C:\Program Files\Adobe\Common\Plug-ins\7.0\MediaCore\{{PluginName}}.aex'" \
-    }
 
 [windows]
 release:
     cargo build --locked --release
-    Copy-Item -Force '{{TargetDir}}\release\{{BinaryName}}.dll' '{{TargetDir}}\release\{{PluginName}}.aex'
-    if (-not $env:NO_INSTALL) { \
-        Start-Process PowerShell -Verb runAs -ArgumentList "-command Set-Location '{{source_directory()}}'; Copy-Item -Force '{{TargetDir}}\release\{{BinaryName}}.dll' 'C:\Program Files\Adobe\Common\Plug-ins\7.0\MediaCore\{{PluginName}}.aex'" \
-    }
+    Copy-Item -LiteralPath (Join-Path $env:TargetDir 'release/{{BinaryName}}.dll') -Destination (Join-Path $env:TargetDir 'release/{{PluginName}}.aex') -Force -ErrorAction Stop
 
 [macos]
 build:
     cargo build --locked
-    just -f {{justfile()}} create_bundle debug {{TargetDir}}
+    just -f {{quote(justfile())}} create_bundle debug {{quote(TargetDir)}}
 
 [macos]
 release:
     cargo build --locked --release
-    just -f {{justfile()}} create_bundle release {{TargetDir}}
+    just -f {{quote(justfile())}} create_bundle release {{quote(TargetDir)}}
 
 [macos]
-create_bundle profile TargetDir:
-    #!/bin/bash
-    set -e
-    echo "Creating plugin bundle"
-    rm -Rf {{TargetDir}}/{{profile}}/{{PluginName}}.plugin
-    mkdir -p {{TargetDir}}/{{profile}}/{{PluginName}}.plugin/Contents/Resources
-    mkdir -p {{TargetDir}}/{{profile}}/{{PluginName}}.plugin/Contents/MacOS
+[positional-arguments]
+create_bundle profile target_dir:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    profile="$1"
+    target_dir="$2"
+    plugin_path="$target_dir/$profile/$PluginName.plugin"
+    rm -rf "$plugin_path"
+    mkdir -p "$plugin_path/Contents/Resources" "$plugin_path/Contents/MacOS"
 
-    if [ "{{profile}}" == "release" ]; then
-        # Build universal binary
-        rustup target add aarch64-apple-darwin
-        rustup target add x86_64-apple-darwin
-
+    if [ "$profile" == "release" ]; then
+        rustup target add aarch64-apple-darwin x86_64-apple-darwin
         cargo build --locked --release --target x86_64-apple-darwin
         cargo build --locked --release --target aarch64-apple-darwin
-
-        cp {{TargetDir}}/x86_64-apple-darwin/release/{{BinaryName}}.rsrc {{TargetDir}}/{{profile}}/{{PluginName}}.plugin/Contents/Resources/{{PluginName}}.rsrc
-        cp {{TargetDir}}/x86_64-apple-darwin/release/{{BinaryName}}_PkgInfo {{TargetDir}}/{{profile}}/{{PluginName}}.plugin/Contents/PkgInfo
-        cp {{TargetDir}}/x86_64-apple-darwin/release/{{BinaryName}}_Info.plist {{TargetDir}}/{{profile}}/{{PluginName}}.plugin/Contents/Info.plist
-        lipo {{TargetDir}}/{x86_64,aarch64}-apple-darwin/release/lib{{BinaryName}}.dylib -create -output {{TargetDir}}/{{profile}}/{{PluginName}}.plugin/Contents/MacOS/{{PluginName}}.dylib
-        mv {{TargetDir}}/{{profile}}/{{PluginName}}.plugin/Contents/MacOS/{{PluginName}}.dylib {{TargetDir}}/{{profile}}/{{PluginName}}.plugin/Contents/MacOS/{{PluginName}}
+        resource_dir="$target_dir/x86_64-apple-darwin/release"
+        lipo "$resource_dir/lib{{BinaryName}}.dylib" "$target_dir/aarch64-apple-darwin/release/lib{{BinaryName}}.dylib" -create -output "$plugin_path/Contents/MacOS/$PluginName"
     else
-        cp {{TargetDir}}/{{profile}}/{{BinaryName}}.rsrc {{TargetDir}}/{{profile}}/{{PluginName}}.plugin/Contents/Resources/{{PluginName}}.rsrc
-        cp {{TargetDir}}/{{profile}}/{{BinaryName}}_PkgInfo {{TargetDir}}/{{profile}}/{{PluginName}}.plugin/Contents/PkgInfo
-        cp {{TargetDir}}/{{profile}}/{{BinaryName}}_Info.plist {{TargetDir}}/{{profile}}/{{PluginName}}.plugin/Contents/Info.plist
-        cp {{TargetDir}}/{{profile}}/lib{{BinaryName}}.dylib {{TargetDir}}/{{profile}}/{{PluginName}}.plugin/Contents/MacOS/{{PluginName}}
+        resource_dir="$target_dir/$profile"
+        cp "$resource_dir/lib{{BinaryName}}.dylib" "$plugin_path/Contents/MacOS/$PluginName"
     fi
-    /usr/libexec/PlistBuddy -c 'Set :CFBundleIdentifier "{{BundleIdentifier}}"' {{TargetDir}}/{{profile}}/{{PluginName}}.plugin/Contents/Info.plist
+    cp "$resource_dir/{{BinaryName}}.rsrc" "$plugin_path/Contents/Resources/$PluginName.rsrc"
+    cp "$resource_dir/{{BinaryName}}_PkgInfo" "$plugin_path/Contents/PkgInfo"
+    cp "$resource_dir/{{BinaryName}}_Info.plist" "$plugin_path/Contents/Info.plist"
+    /usr/libexec/PlistBuddy -c 'Set :CFBundleIdentifier "{{BundleIdentifier}}"' "$plugin_path/Contents/Info.plist"
 
-    DEV_CERT=$(security find-identity -v -p codesigning | grep -m 1 "Apple Development" | awk -F ' ' '{print $2}')
-
-    # Perform signing - as of AE and PR 25.2 all macos plugins require a signature or else
-    # they will fail to load with error code "2685337601" - see your "Plugin Loading.log" for details
+    DEV_CERT=$(security find-identity -v -p codesigning | awk '/Apple Development/ {print $2; exit}')
     if [ -n "$DEV_CERT" ]; then
-       codesign --options runtime --timestamp -strict --sign "$DEV_CERT" {{TargetDir}}/{{profile}}/{{PluginName}}.plugin
+        codesign --options runtime --timestamp -strict --sign "$DEV_CERT" "$plugin_path"
     else
-       codesign --options runtime --timestamp -strict --sign - {{TargetDir}}/{{profile}}/{{PluginName}}.plugin
-       echo "Note: Using ad-hoc signature. For distribution, a valid Apple Developer certificate is recommended."
+        codesign --options runtime --timestamp -strict --sign - "$plugin_path"
+        echo "開発用のad-hoc署名を使用しました。一般配布用の署名・公証は別途必要です。"
     fi
 
-    # Install
-    if [ -z "$NO_INSTALL" ]; then
-        echo "Installing to /Library/Application Support/Adobe/Common/Plug-ins/7.0/MediaCore/"
-        sudo cp -rf "{{TargetDir}}/{{profile}}/{{PluginName}}.plugin" "/Library/Application Support/Adobe/Common/Plug-ins/7.0/MediaCore/"
-    fi
+# 最適化ビルド後にプラグインを配置する。
+[positional-arguments]
+[script("uv", "run", "--no-project", "--no-python-downloads", "python")]
+install *args:
+    import runpy, sys
+    sys.argv = ["scripts/install_plugin.py", *sys.argv[1:]]
+    runpy.run_path("scripts/install_plugin.py", run_name="__main__")
+
+# ビルド・書き込みをせず、生成先と配置先を表示する。
+[positional-arguments]
+[script("uv", "run", "--no-project", "--no-python-downloads", "python")]
+install-plan *args:
+    import runpy, sys
+    sys.argv = ["scripts/install_plugin.py", "--dry-run", *sys.argv[1:]]
+    runpy.run_path("scripts/install_plugin.py", run_name="__main__")
