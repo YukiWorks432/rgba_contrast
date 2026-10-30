@@ -24,7 +24,7 @@ jobs:
         run: cargo fmt --check
 
       - name: Lint を検証する
-        run: cargo clippy -- -D warnings
+        run: cargo clippy --locked -- -D warnings
 
       - name: テストを実行する
-        run: cargo test
+        run: cargo test --locked

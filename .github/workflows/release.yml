@@ -95,7 +95,7 @@ jobs:
         if: runner.os == 'Windows'
         shell: pwsh
         run: |
-          cargo build --release
+          cargo build --locked --release
           New-Item -ItemType Directory -Path release -Force | Out-Null
           Copy-Item -Force target\release\rgba_contrast.dll target\release\rgba_contrast.aex
           Compress-Archive -LiteralPath target\release\rgba_contrast.aex -DestinationPath "release\rgba_contrast-v$env:VERSION-windows.zip" -Force
