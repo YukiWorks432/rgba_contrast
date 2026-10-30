@@ -64,7 +64,7 @@ def verify_pipl(data):
     if not name or name[1 : 1 + name[0]] != b"HANAYUKI RGBA Contrast":
         raise ValueError("エフェクトの識別名が不正です")
     flags = properties.get(b"2LGe", b"")
-    if len(flags) != 4 or not struct.unpack("<I", flags)[0] & 0x80:
+    if len(flags) != 4 or not struct.unpack("<I", flags)[0] & 0x08:
         raise ValueError("折りたたみグループの対応フラグがありません")
 
 
