@@ -1,3 +1,6 @@
+# リリースで使うjust 1.42系のPythonスクリプト実行を有効にする。
+set unstable
+
 set windows-shell := ["powershell.exe", "-NoLogo", "-Command"]
 
 export TargetDir := env_var_or_default("CARGO_TARGET_DIR", "target")
