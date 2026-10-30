@@ -424,6 +424,16 @@ mod tests {
     close(a.apply(pixel(0.5, 1.0, 0.0, 1.0)), [0.0, 1.0, 1.0, 1.0]);
   }
   #[test]
+  fn unassociated_half_transparent_color_is_not_unmultiplied() {
+    let mut a = config(Space::Hsv);
+    a.separate_alpha = true;
+    a.gamma[2] = 2.0;
+    close(
+      a.apply(pixel(0.8, 0.2, 0.1, 0.25)),
+      [0.8944272, 0.2236068, 0.1118034, 0.25],
+    );
+  }
+  #[test]
   fn opacity_change_preserves_unassociated_color() {
     let mut a = config(Space::Hsl);
     a.separate_alpha = true;

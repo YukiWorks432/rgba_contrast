@@ -42,13 +42,15 @@ fn convert(
   }
 }
 pub(crate) fn render(
-  input: &ae::Layer,
+  input: Option<&ae::Layer>,
   output: &mut ae::Layer,
   adjustment: &Adjustment,
 ) -> Result<(), Error> {
   let suite = ae::pf::suites::PixelFormat::new()?;
-  let format = suite.pixel_format(input)?;
-  if suite.pixel_format(&*output)? != format {
+  let format = suite.pixel_format(&*output)?;
+  if let Some(input) = input
+    && suite.pixel_format(input)? != format
+  {
     return Err(Error::BadCallbackParameter);
   }
   let (depth, bytes) = match format {
@@ -62,27 +64,43 @@ pub(crate) fn render(
   if width == 0 || height == 0 {
     return Ok(());
   }
-  if input.width() != width || input.height() != height {
-    return Err(Error::BadCallbackParameter);
-  }
-  let ir = input.row_bytes();
-  let or = output.row_bytes();
-  let istride = input.buffer_stride();
-  let ostride = output.buffer_stride();
-  let src = input.buffer();
+  let output_origin = output.origin();
+  let output_stride = output.buffer_stride();
+  let output_row = output.row_bytes();
+  let source = input.map(|i| {
+    (
+      i.buffer(),
+      i.width(),
+      i.height(),
+      i.buffer_stride(),
+      i.row_bytes(),
+      i.origin(),
+    )
+  });
   let dst = output.buffer_mut();
+  let zero = [0u8; 16];
   for y in 0..height {
-    let iy = if ir < 0 { height - 1 - y } else { y };
-    let oy = if or < 0 { height - 1 - y } else { y };
+    let oy = if output_row < 0 { height - 1 - y } else { y };
     for x in 0..width {
-      let i = iy * istride + x * bytes;
-      let o = oy * ostride + x * bytes;
-      convert(
-        &src[i..i + bytes],
-        &mut dst[o..o + bytes],
-        depth,
-        adjustment,
-      );
+      let o = oy * output_stride + x * bytes;
+      let pixel = source
+        .as_ref()
+        .and_then(|(data, w, h, stride, row, origin)| {
+          let ix = x as i64 + output_origin.h as i64 - origin.h as i64;
+          let iy = y as i64 + output_origin.v as i64 - origin.v as i64;
+          if ix < 0 || iy < 0 || ix >= *w as i64 || iy >= *h as i64 {
+            return None;
+          }
+          let iy = if *row < 0 {
+            *h - 1 - iy as usize
+          } else {
+            iy as usize
+          };
+          let start = iy * *stride + ix as usize * bytes;
+          Some(&data[start..start + bytes])
+        })
+        .unwrap_or(&zero[..bytes]);
+      convert(pixel, &mut dst[o..o + bytes], depth, adjustment);
     }
   }
   Ok(())

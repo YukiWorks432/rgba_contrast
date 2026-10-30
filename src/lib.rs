@@ -50,6 +50,34 @@ impl core::convert::TryFrom<i32> for Mode {
   }
 }
 
+// 透明な黒も可視化する場合、入力の非空矩形より広い描画が必要になる。
+fn smart_rects(
+  request: ae::Rect,
+  input: ae::Rect,
+  input_max: ae::Rect,
+  layer: ae::Rect,
+  reveals: bool,
+) -> (ae::Rect, ae::Rect) {
+  if !reveals {
+    return (input, input_max);
+  }
+  let mut max = input_max;
+  if !layer.is_empty() {
+    max.union(&layer);
+  }
+  let clipped = ae::Rect {
+    left: request.left.max(max.left),
+    top: request.top.max(max.top),
+    right: request.right.min(max.right),
+    bottom: request.bottom.min(max.bottom),
+  };
+  let mut result = input;
+  if !clipped.is_empty() {
+    result.union(&clipped);
+  }
+  (result, max)
+}
+
 #[derive(Default)]
 struct Plugin {}
 
@@ -261,7 +289,7 @@ impl AdobePluginGlobal for Plugin {
         gamma,
         params.get(Params::HueOrigin)?.as_float_slider()?.value() as f32,
         params.get(Params::SeparateAlpha)?.as_checkbox()?.value(),
-        !in_data.is_premiere(),
+        false,
       ))
     };
     match cmd {
@@ -335,7 +363,11 @@ impl AdobePluginGlobal for Plugin {
 
         let adjustment = get_params()?;
         if in_data.is_premiere() {
-          return premiere::render(&in_layer, &mut out_layer, &adjustment);
+          return premiere::render(
+            Some(&in_layer),
+            &mut out_layer,
+            &adjustment,
+          );
         }
 
         in_layer.iterate_with(
@@ -376,71 +408,172 @@ impl AdobePluginGlobal for Plugin {
         // アルファ操作で透明な画素を可視化する場合に備える。
         req.preserve_rgb_of_zero_alpha = 1;
 
-        if let Ok(in_result) = extra.callbacks().checkout_layer(
+        let in_result = extra.callbacks().checkout_layer(
           0,
           0,
           &req,
           in_data.current_time(),
           in_data.time_step(),
           in_data.time_scale(),
-        ) {
-          let _ = extra.union_result_rect(in_result.result_rect.into());
-          let _ = extra.union_max_result_rect(in_result.max_result_rect.into());
-        } else {
-          return Err(Error::InterruptCancel);
-        }
+        )?;
+        let adjustment = get_params()?;
+        let transparent = PixelF32 {
+          red: 0.0,
+          green: 0.0,
+          blue: 0.0,
+          alpha: 0.0,
+        };
+        let reveals = adjustment.apply(transparent).alpha != 0.0;
+        let width = (in_data.width() as f64 * f64::from(in_data.downsample_x()))
+          .ceil() as i32;
+        let height = (in_data.height() as f64
+          * f64::from(in_data.downsample_y()))
+        .ceil() as i32;
+        let layer = ae::Rect {
+          left: 0,
+          top: 0,
+          right: width,
+          bottom: height,
+        };
+        let (result, max) = smart_rects(
+          req.rect.into(),
+          in_result.result_rect.into(),
+          in_result.max_result_rect.into(),
+          layer,
+          reveals,
+        );
+        extra.set_result_rect(result);
+        extra.set_max_result_rect(max);
+        extra.set_pre_render_data(
+          in_result.result_rect.left >= in_result.result_rect.right
+            || in_result.result_rect.top >= in_result.result_rect.bottom,
+        );
       }
       ae::Command::SmartRender { extra } => {
         let cb = extra.callbacks();
-        let input_world = cb.checkout_layer_pixels(0)?;
+        let input_empty =
+          extra.pre_render_data::<bool>().copied().unwrap_or(false);
+        let input_world = if input_empty {
+          None
+        } else {
+          Some(cb.checkout_layer_pixels(0)?)
+        };
         let mut output_world = cb.checkout_output()?;
-
-        let progress_final = output_world.height() as _;
-
         let adjustment = get_params()?;
         if in_data.is_premiere() {
-          premiere::render(&input_world, &mut output_world, &adjustment)?;
-          cb.checkin_layer_pixels(0)?;
-          return Ok(());
-        }
-
-        input_world.iterate_with(
-          &mut output_world,
-          0,
-          progress_final,
-          None,
-          |_x: i32,
-           _y: i32,
-           pixel: ae::GenericPixel,
-           out_pixel: ae::GenericPixelMut|
-           -> Result<(), Error> {
-            match (pixel, out_pixel) {
-              (
-                ae::GenericPixel::Pixel8(pixel),
-                ae::GenericPixelMut::Pixel8(out_pixel),
-              ) => {
-                *out_pixel = adjustment.apply(pixel.to_pixel32()).to_pixel8()
+          premiere::render(
+            input_world.as_ref(),
+            &mut output_world,
+            &adjustment,
+          )?;
+        } else {
+          let origin = output_world.origin();
+          let input_origin = input_world.as_ref().map(|v| v.origin());
+          let progress_final = output_world.height() as _;
+          output_world.iterate(0, progress_final, None, |x, y, out| {
+            let source = input_world.as_ref().and_then(|input| {
+              let o = input_origin.as_ref().unwrap();
+              let ix = x + origin.h - o.h;
+              let iy = y + origin.v - o.v;
+              if ix < 0
+                || iy < 0
+                || ix as usize >= input.width()
+                || iy as usize >= input.height()
+              {
+                None
+              } else {
+                Some((input, ix as usize, iy as usize))
               }
-              (
-                ae::GenericPixel::Pixel16(pixel),
-                ae::GenericPixelMut::Pixel16(out_pixel),
-              ) => {
-                *out_pixel = adjustment.apply(pixel.to_pixel32()).to_pixel16()
+            });
+            let zero = PixelF32 {
+              red: 0.0,
+              green: 0.0,
+              blue: 0.0,
+              alpha: 0.0,
+            };
+            match out {
+              ae::GenericPixelMut::Pixel8(p) => {
+                let v = source
+                  .map_or(zero, |(i, x, y)| i.as_pixel8(x, y).to_pixel32());
+                *p = adjustment.apply(v).to_pixel8();
               }
-              (
-                ae::GenericPixel::PixelF32(pixel),
-                ae::GenericPixelMut::PixelF32(out_pixel),
-              ) => *out_pixel = adjustment.apply(*pixel),
+              ae::GenericPixelMut::Pixel16(p) => {
+                let v = source
+                  .map_or(zero, |(i, x, y)| i.as_pixel16(x, y).to_pixel32());
+                *p = adjustment.apply(v).to_pixel16();
+              }
+              ae::GenericPixelMut::PixelF32(p) => {
+                let v = source.map_or(zero, |(i, x, y)| *i.as_pixel32(x, y));
+                *p = adjustment.apply(v);
+              }
               _ => return Err(Error::BadCallbackParameter),
             }
             Ok(())
-          },
-        )?;
-
-        cb.checkin_layer_pixels(0)?;
+          })?;
+        }
+        if input_world.is_some() {
+          cb.checkin_layer_pixels(0)?;
+        }
       }
       _ => {}
     }
     Ok(())
+  }
+}
+
+#[cfg(test)]
+mod smart_render_tests {
+  use super::*;
+  #[test]
+  fn transparent_black_reveal_extends_output_to_layer_bounds() {
+    let request = ae::Rect {
+      left: 0,
+      top: 0,
+      right: 8,
+      bottom: 8,
+    };
+    let input = ae::Rect {
+      left: 2,
+      top: 2,
+      right: 4,
+      bottom: 4,
+    };
+    let layer = ae::Rect {
+      left: 0,
+      top: 0,
+      right: 10,
+      bottom: 10,
+    };
+    let (result, max) = smart_rects(request, input, input, layer, true);
+    assert_eq!(result, request);
+    assert_eq!(max, layer);
+    let (result, max) = smart_rects(request, input, input, layer, false);
+    assert_eq!(result, input);
+    assert_eq!(max, input);
+    let (result, max) =
+      smart_rects(request, ae::Rect::empty(), ae::Rect::empty(), layer, true);
+    assert_eq!(result, request);
+    assert_eq!(max, layer);
+  }
+  #[test]
+  fn legacy_alpha_can_reveal_transparent_black() {
+    let a = Adjustment::new(
+      Space::Rgb,
+      Transfer::Srgb,
+      false,
+      [0.0, 0.0, 0.0, -100.0],
+      [0.5; 4],
+      [1.0; 4],
+      0.0,
+      true,
+      false,
+    );
+    let p = a.apply(PixelF32 {
+      red: 0.0,
+      green: 0.0,
+      blue: 0.0,
+      alpha: 0.0,
+    });
+    assert_eq!(p.alpha, 0.5);
   }
 }

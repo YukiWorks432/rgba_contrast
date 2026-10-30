@@ -201,7 +201,7 @@ M = 1、m = 1 − 2^-24 は f32 で表現できるが、f32 の `2 − (M + m)` 
 
 AE の `preserve_rgb_of_zero_alpha` の伝播、アルファ 0 を可視化する経路の `PF_OutFlag2_REVEALS_ZERO_ALPHA`、描画範囲の計算をこの契約へそろえる。上流の描画や素材読み込みで既に失われた隠れた RGB の復元は保証しない。[SmartFX の透明画素と描画範囲](https://ae-plugins.docsforadobe.dev/smartfx/smartfx/)
 
-Premiere の SDK は乗算済みの BGRP/PRGB 系を別形式として定義している。現在の形式宣言や AE の画素構造体名だけから、すべての経路が同じ表現だとは断定しない。実装時は AE の通常描画・SmartFX、Premiere の対応する形式ごとに、既知の色とアルファを渡して入力バッファと合成結果を確認し、入出力契約へ記録する。未確認の経路を対応済みに含めない。[Premiere の画素形式](https://ppro-plugins.docsforadobe.dev/universals/pixel-formats-and-color-spaces/)
+Adobe SDK の GLator サンプルは、AE の ARGB 入力を GPU 合成の前に乗算し、ホストへ返す前に乗算解除している。対応する AE 経路はこのサンプルに合わせて未乗算として扱う。Premiere の SDK は乗算済みの BGRP/PRGB 系を別形式として定義しており、今回の BGRA は未乗算として扱う。現在の形式宣言や AE の画素構造体名だけから、すべての経路が同じ表現だとは断定しない。実装時は AE の通常描画・SmartFX、Premiere の対応する形式ごとに、既知の色とアルファを渡して入力バッファと合成結果を確認し、入出力契約へ記録する。未確認の経路を対応済みに含めない。[Premiere の画素形式](https://ppro-plugins.docsforadobe.dev/universals/pixel-formats-and-color-spaces/)
 
 ### 既存プロジェクトとアルファ処理の互換性
 
