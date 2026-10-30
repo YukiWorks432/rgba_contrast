@@ -46,10 +46,6 @@ struct Plugin {}
 ae::define_effect!(Plugin, (), Params);
 
 impl AdobePluginGlobal for Plugin {
-  fn can_load(_host_name: &str, _host_version: &str) -> bool {
-    true
-  }
-
   fn params_setup(
     &self,
     params: &mut ae::Parameters<Params>,
@@ -122,7 +118,7 @@ impl AdobePluginGlobal for Plugin {
   }
 
   fn handle_command(
-    &mut self,
+    &self,
     cmd: ae::Command,
     in_data: InData,
     mut out_data: OutData,
@@ -254,8 +250,13 @@ impl AdobePluginGlobal for Plugin {
       }
       ae::Command::SmartRender { extra } => {
         let cb = extra.callbacks();
-        let input_world = cb.checkout_layer_pixels(0)?;
-        let mut output_world = cb.checkout_output()?;
+        // 下にレイヤーのない調整レイヤーなどでは、描画対象が返らない。
+        let Some(input_world) = cb.checkout_layer_pixels(0)? else {
+          return Ok(());
+        };
+        let Some(mut output_world) = cb.checkout_output()? else {
+          return cb.checkin_layer_pixels(0);
+        };
 
         let progress_final = output_world.height() as _;
 
