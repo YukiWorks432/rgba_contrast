@@ -31,6 +31,12 @@ enum Params {
   GammaAlpha,
   HueOrigin,
   SeparateAlpha,
+  ContrastGroup,
+  ContrastGroupEnd,
+  GammaGroup,
+  GammaGroupEnd,
+  OptionsGroup,
+  OptionsGroupEnd,
 }
 #[derive(Eq, PartialEq, Hash, Clone, Copy, Debug)]
 #[repr(i32)]
@@ -102,19 +108,6 @@ impl AdobePluginGlobal for Plugin {
       f.set_default(0.0);
       f.set_precision(2);
     }
-    params.add(Params::Red, "Red", ae::FloatSliderDef::setup(gain_slider))?;
-    params.add(
-      Params::Green,
-      "Green",
-      ae::FloatSliderDef::setup(gain_slider),
-    )?;
-    params.add(Params::Blue, "Blue", ae::FloatSliderDef::setup(gain_slider))?;
-    params.add(
-      Params::Alpha,
-      "Alpha",
-      ae::FloatSliderDef::setup(gain_slider),
-    )?;
-
     fn pivot_slider(f: &mut ae::FloatSliderDef) {
       f.set_slider_min(0.0);
       f.set_slider_max(100.0);
@@ -124,38 +117,6 @@ impl AdobePluginGlobal for Plugin {
       f.set_precision(2);
       f.set_display_flags(ae::ValueDisplayFlag::PERCENT);
     }
-
-    params.add(
-      Params::RPivot,
-      "Red Pivot",
-      ae::FloatSliderDef::setup(pivot_slider),
-    )?;
-    params.add(
-      Params::GPivot,
-      "Green Pivot",
-      ae::FloatSliderDef::setup(pivot_slider),
-    )?;
-    params.add(
-      Params::BPivot,
-      "Blue Pivot",
-      ae::FloatSliderDef::setup(pivot_slider),
-    )?;
-    params.add(
-      Params::APivot,
-      "Alpha Pivot",
-      ae::FloatSliderDef::setup(pivot_slider),
-    )?;
-
-    params.add(
-      Params::Mode,
-      "Mode",
-      ae::PopupDef::setup(|f| {
-        f.set_options(&["Modern", "Legacy"]);
-        f.set_default(1);
-        f.set_value(f.default());
-      }),
-    )?;
-
     params.add_with_flags(
       Params::ColorSpace,
       "Color Space",
@@ -167,63 +128,116 @@ impl AdobePluginGlobal for Plugin {
       ae::ParamFlag::CANNOT_TIME_VARY,
       ae::ParamUIFlags::NONE,
     )?;
-    params.add_with_flags(
-      Params::InputTransfer,
-      "Input RGB",
-      ae::PopupDef::setup(|f| {
-        f.set_options(&[
-          "sRGB",
-          "Rec.709 Gamma 2.4",
-          "Rec.709",
-          "Linear sRGB / Rec.709",
-        ]);
-        f.set_default(1);
-        f.set_value(1);
-      }),
-      ae::ParamFlag::CANNOT_TIME_VARY,
-      ae::ParamUIFlags::NONE,
+    params.add_group(
+      Params::ContrastGroup,
+      Params::ContrastGroupEnd,
+      "Contrast",
+      false,
+      |params| {
+        params.add(
+          Params::Mode,
+          "Mode",
+          ae::PopupDef::setup(|f| {
+            f.set_options(&["Modern", "Legacy"]);
+            f.set_default(1);
+            f.set_value(f.default());
+          }),
+        )?;
+        for (gain, gain_name, pivot, pivot_name) in [
+          (Params::Red, "Red", Params::RPivot, "Red Pivot"),
+          (Params::Green, "Green", Params::GPivot, "Green Pivot"),
+          (Params::Blue, "Blue", Params::BPivot, "Blue Pivot"),
+          (Params::Alpha, "Alpha", Params::APivot, "Alpha Pivot"),
+        ] {
+          params.add(
+            gain,
+            gain_name,
+            ae::FloatSliderDef::setup(gain_slider),
+          )?;
+          params.add(
+            pivot,
+            pivot_name,
+            ae::FloatSliderDef::setup(pivot_slider),
+          )?;
+        }
+        Ok(())
+      },
     )?;
-    for (id, name) in [
-      (Params::Gamma1, "Axis 1 Gamma"),
-      (Params::Gamma2, "Axis 2 Gamma"),
-      (Params::Gamma3, "Axis 3 Gamma"),
-      (Params::GammaAlpha, "Alpha Gamma"),
-    ] {
-      params.add(
-        id,
-        name,
-        ae::FloatSliderDef::setup(|f| {
-          f.set_slider_min(0.25);
-          f.set_slider_max(4.0);
-          f.set_valid_min(0.1);
-          f.set_valid_max(10.0);
-          f.set_default(1.0);
-          f.set_precision(2);
-        }),
-      )?;
-    }
-    params.add(
-      Params::HueOrigin,
-      "Hue Gamma Origin",
-      ae::FloatSliderDef::setup(|f| {
-        f.set_slider_min(0.0);
-        f.set_slider_max(360.0);
-        f.set_valid_min(0.0);
-        f.set_valid_max(360.0);
-        f.set_default(0.0);
-        f.set_precision(2);
-      }),
+    params.add_group(
+      Params::GammaGroup,
+      Params::GammaGroupEnd,
+      "Gamma",
+      true,
+      |params| {
+        for (id, name) in [
+          (Params::Gamma1, "Axis 1 Gamma"),
+          (Params::Gamma2, "Axis 2 Gamma"),
+          (Params::Gamma3, "Axis 3 Gamma"),
+          (Params::GammaAlpha, "Alpha Gamma"),
+        ] {
+          params.add(
+            id,
+            name,
+            ae::FloatSliderDef::setup(|f| {
+              f.set_slider_min(0.25);
+              f.set_slider_max(4.0);
+              f.set_valid_min(0.1);
+              f.set_valid_max(10.0);
+              f.set_default(1.0);
+              f.set_precision(2);
+            }),
+          )?;
+        }
+        params.add(
+          Params::HueOrigin,
+          "Hue Gamma Origin",
+          ae::FloatSliderDef::setup(|f| {
+            f.set_slider_min(0.0);
+            f.set_slider_max(360.0);
+            f.set_valid_min(0.0);
+            f.set_valid_max(360.0);
+            f.set_default(0.0);
+            f.set_precision(2);
+          }),
+        )?;
+        Ok(())
+      },
     )?;
-    params.add_with_flags(
-      Params::SeparateAlpha,
-      "Separate Color and Alpha",
-      ae::CheckBoxDef::setup(|f| {
-        f.set_default(true);
-        f.set_value(false);
-      }),
-      ae::ParamFlag::CANNOT_TIME_VARY
-        | ae::ParamFlag::USE_VALUE_FOR_OLD_PROJECTS,
-      ae::ParamUIFlags::NONE,
+    params.add_group(
+      Params::OptionsGroup,
+      Params::OptionsGroupEnd,
+      "Options",
+      true,
+      |params| {
+        params.add_with_flags(
+          Params::InputTransfer,
+          "Input RGB",
+          ae::PopupDef::setup(|f| {
+            f.set_options(&[
+              "sRGB",
+              "Rec.709 Gamma 2.4",
+              "Rec.709",
+              "Linear sRGB / Rec.709",
+            ]);
+            f.set_default(1);
+            f.set_value(1);
+          }),
+          ae::ParamFlag::CANNOT_TIME_VARY,
+          ae::ParamUIFlags::NONE,
+        )?;
+        params.add_with_flags(
+          Params::SeparateAlpha,
+          "Separate Color and Alpha",
+          ae::CheckBoxDef::setup(|f| {
+            f.set_default(true);
+            f.set_value(false);
+          }),
+          ae::ParamFlag::CANNOT_TIME_VARY
+            | ae::ParamFlag::USE_VALUE_FOR_OLD_PROJECTS,
+          ae::ParamUIFlags::NONE,
+        )?;
+        Ok(())
+      },
     )?;
     Ok(())
   }
@@ -301,6 +315,8 @@ impl AdobePluginGlobal for Plugin {
       ae::Command::GlobalSetup => {
         out_data.set_out_flag(ae::OutFlags::SendUpdateParamsUi, true);
         out_data.set_out_flag2(ae::OutFlags2::RevealsZeroAlpha, true);
+        out_data
+          .set_out_flag2(ae::OutFlags2::ParamGroupStartCollapsedFlag, true);
         // For Premiere - declare supported pixel formats
         if in_data.is_premiere() {
           let suite = ae::pf::suites::PixelFormat::new()?;
@@ -354,6 +370,12 @@ impl AdobePluginGlobal for Plugin {
             p.update_param_ui()?;
           }
         }
+        let mut hue_origin = params.get_mut(Params::HueOrigin)?;
+        hue_origin.set_ui_flag(
+          ae::ParamUIFlags::DISABLED,
+          !matches!(selected_space, 2 | 3 | 6),
+        );
+        hue_origin.update_param_ui()?;
       }
       ae::Command::Render {
         in_layer,

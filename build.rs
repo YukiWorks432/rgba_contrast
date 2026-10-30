@@ -68,7 +68,8 @@ fn main() {
         | OutFlags::DeepColorAware,
     ),
     Property::AE_Effect_Global_OutFlags_2(
-      OutFlags2::RevealsZeroAlpha
+      OutFlags2::ParamGroupStartCollapsedFlag
+        | OutFlags2::RevealsZeroAlpha
         | OutFlags2::SupportsThreadedRendering
         | OutFlags2::FloatColorAware
         | OutFlags2::SupportsSmartRender,

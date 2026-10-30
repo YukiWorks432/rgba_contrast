@@ -5,6 +5,15 @@ RGB・HSL・HSV・YUV（BT.709）・OKLab・OKLch の各軸とアルファを、
 ## License
 MIT License Copyright 2025 花雪(X: @Yuk1_Works)
 ## パラメーター
+
+`Color Space` で色空間を選びます。操作項目は次のグループに分かれています。
+
+- **Contrast**：方式、各軸とアルファのコントラスト、対応するPivot。初期状態で展開。
+- **Gamma**：各軸とアルファのガンマ、色相ガンマの起点。初期状態で折りたたみ。
+- **Options**：入力RGBの解釈と、色とアルファの分離。初期状態で折りたたみ。
+
+色相ガンマの起点はHSL・HSV・OKLchで使用できます。軸名は選択した色空間に応じて変わります。
+
 **Red / Green / Blue / Alpha**
 
 それぞれのコントラストを調整できます。
