@@ -35,7 +35,7 @@ fn main() {
   let subversion = cargo_version_component("CARGO_PKG_VERSION_MINOR", 15);
   let bugversion = cargo_version_component("CARGO_PKG_VERSION_PATCH", 15);
 
-  pipl::plugin_build(vec![
+  let properties = || vec![
     Property::Kind(PIPLType::AEEffect),
     Property::Name("RGBA Contrast"),
     Property::Category("hanayuki"),
@@ -78,5 +78,25 @@ fn main() {
     Property::AE_Effect_Match_Name("HANAYUKI RGBA Contrast"),
     Property::AE_Reserved_Info(8),
     Property::AE_Effect_Support_URL(""),
-  ])
+  ];
+
+  pipl::plugin_build(properties());
+
+  #[cfg(target_os = "windows")]
+  {
+    // pipl 0.1.1 の文字列形式は RC の文字コード変換で壊れるため、
+    // 同じリソースを数値の列として再コンパイルする。
+    let bytes = pipl::build_pipl(properties()).expect("PiPLを生成できません");
+    let (pairs, remainder) = bytes.as_chunks::<2>();
+    assert!(remainder.is_empty(), "PiPLの長さが偶数ではありません");
+    let words = pairs
+      .iter()
+      .map(|pair| format!("0x{:04x}", u16::from_le_bytes(*pair)))
+      .collect::<Vec<_>>()
+      .join(", ");
+    winres::WindowsResource::new()
+      .append_rc_content(&format!("16000 PiPL DISCARDABLE BEGIN {words} END"))
+      .compile()
+      .expect("PiPLリソースをコンパイルできません");
+  }
 }

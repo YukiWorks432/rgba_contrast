@@ -467,6 +467,7 @@ dependencies = [
  "after-effects",
  "palette",
  "pipl",
+ "winres",
 ]
 
 [[package]]

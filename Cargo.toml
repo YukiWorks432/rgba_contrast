@@ -13,6 +13,9 @@ palette = { version = "0.7.7", default-features = false, features = ["std"] }
 [build-dependencies]
 pipl = "0.1.1"
 
+[target.'cfg(windows)'.build-dependencies]
+winres = "0.1.12"
+
 [lints.rust]
 # Teach rustc about cfg names/values used by the macro to avoid `unexpected_cfgs` warnings
 unexpected_cfgs = { level = "warn", check-cfg = [

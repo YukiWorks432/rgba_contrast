@@ -28,3 +28,13 @@ jobs:
 
       - name: テストを実行する
         run: cargo test
+
+  windows-pipl:
+    name: Windows版のPiPLを検証する
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
+      - name: プラグインをビルドする
+        run: cargo build --release --locked
+      - name: ビルド済みプラグインの登録情報を検証する
+        run: python scripts/verify_pipl.py target/release/rgba_contrast.dll
