@@ -5,28 +5,27 @@ const PF_PLUG_IN_VERSION: u16 = 13;
 const PF_PLUG_IN_SUBVERS: u16 = 28;
 
 fn cargo_version_component(name: &str, maximum: u32) -> u32 {
-  let value =
-    env::var(name).unwrap_or_else(|_| panic!("{name} が設定されていません"));
-  let component = value
-    .parse::<u32>()
-    .unwrap_or_else(|_| panic!("{name} は整数ではありません: {value}"));
-  assert!(
-    component <= maximum,
-    "{name} は {maximum} 以下である必要があります: {component}"
-  );
-  component
+    let value = env::var(name).unwrap_or_else(|_| panic!("{name} が設定されていません"));
+    let component = value
+        .parse::<u32>()
+        .unwrap_or_else(|_| panic!("{name} は整数ではありません: {value}"));
+    assert!(
+        component <= maximum,
+        "{name} は {maximum} 以下である必要があります: {component}"
+    );
+    component
 }
 
 fn cargo_release_stage() -> Stage {
-  match env::var("CARGO_PKG_VERSION_PRE")
-    .unwrap_or_default()
-    .as_str()
-  {
-    "" => Stage::Release,
-    pre if pre.starts_with("alpha") => Stage::Alpha,
-    pre if pre.starts_with("beta") || pre.starts_with("rc") => Stage::Beta,
-    _ => Stage::Develop,
-  }
+    match env::var("CARGO_PKG_VERSION_PRE")
+        .unwrap_or_default()
+        .as_str()
+    {
+        "" => Stage::Release,
+        pre if pre.starts_with("alpha") => Stage::Alpha,
+        pre if pre.starts_with("beta") || pre.starts_with("rc") => Stage::Beta,
+        _ => Stage::Develop,
+    }
 }
 
 #[rustfmt::skip]
