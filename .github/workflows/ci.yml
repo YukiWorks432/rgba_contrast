@@ -36,7 +36,7 @@ jobs:
         run: cargo build --release --locked
 
       - name: ビルド済みプラグインの登録情報を検証する
-        run: python scripts/verify_pipl.py target/release/rgba_contrast.dll
+        run: python -X utf8 scripts/verify_pipl.py target/release/rgba_contrast.dll
 
   macos-install:
     name: macOSのビルドと一時配置を検証する
