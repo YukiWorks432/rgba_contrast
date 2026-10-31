@@ -24,7 +24,7 @@ impl LinearContrast for PixelF32 {
 
 // 端点は画素ごとに変わらないため、描画前に倍精度で求める。
 #[derive(Clone, Copy)]
-struct Curve {
+pub(crate) struct Curve {
   gain: f32,
   k: f64,
   pivot: f64,
@@ -33,7 +33,7 @@ struct Curve {
 }
 
 impl Curve {
-  fn new(gain: f32, pivot: f32) -> Self {
+  pub(crate) fn new(gain: f32, pivot: f32) -> Self {
     let k = (gain as f64).abs();
     let pivot = pivot as f64;
     let logistic = |v: f64| 1.0 / (1.0 + (k * (pivot - v)).exp());
@@ -46,7 +46,7 @@ impl Curve {
     }
   }
 
-  fn apply(self, x: f32) -> f32 {
+  pub(crate) fn apply(self, x: f32) -> f32 {
     if !self.gain.is_finite() || self.gain.abs() < 1e-7 {
       return x;
     }

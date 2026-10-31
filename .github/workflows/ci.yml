@@ -32,6 +32,12 @@ jobs:
       - name: ビルド補助とリリース条件を検証する
         run: python -m unittest discover -s tests
 
+      - name: プラグインをビルドする
+        run: cargo build --release --locked
+
+      - name: ビルド済みプラグインの登録情報を検証する
+        run: python -X utf8 scripts/verify_pipl.py target/release/rgba_contrast.dll
+
   macos-install:
     name: macOSのビルドと一時配置を検証する
     runs-on: macos-latest
