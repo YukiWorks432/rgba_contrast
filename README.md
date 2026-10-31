@@ -1,57 +1,118 @@
 # RGBA Contrast
-After Effects / Premiere Pro用プラグイン。
 
-RGB・HSL・HSV・YUV（BT.709）・OKLab・OKLch の各軸とアルファを、コントラストとガンマで調整できます。
-## License
-MIT License Copyright 2025 花雪(X: @Yuk1_Works)
+After Effects / Premiere Pro用の、コントラストとガンマを調整するプラグインです。RGB・HSL・HSV・YUV（BT.709）・OKLab・OKLchの各軸とアルファを個別に調整できます。
+
 ## パラメーター
 
-`Color Space` で色空間を選びます。操作項目は次のグループに分かれています。
+`Color Space` で色空間を選びます。既定値は `RGB` です。各軸の表示名は色空間に合わせて変わります。
 
-- **Contrast**：方式、各軸とアルファのコントラスト、対応するPivot。初期状態で展開。
-- **Gamma**：各軸とアルファのガンマ、色相ガンマの起点。初期状態で折りたたみ。
-- **Options**：入力RGBの解釈と、色とアルファの分離。初期状態で折りたたみ。
+| 色空間 | 調整する三軸 |
+| --- | --- |
+| RGB | Red・Green・Blue |
+| HSL | H（色相）・S（彩度）・L（明度） |
+| HSV | H（色相）・S（彩度）・V（明るさ） |
+| YUV（BT.709） | Y（輝度成分）・U/V（色差成分） |
+| OKLab | L（明度）・a/b（色成分） |
+| OKLch | L（明度）・C（彩度）・h（色相） |
 
-色相ガンマの起点はHSL・HSV・OKLchで使用できます。軸名は選択した色空間に応じて変わります。
+操作項目は `Contrast`、`Gamma`、`Options` のグループに分かれています。`Contrast` は初期状態で展開され、残りのグループは折りたたまれています。
 
-**Red / Green / Blue / Alpha**
+### コントラストとガンマ
 
-それぞれのコントラストを調整できます。
+`Contrast` には方式を選ぶ `Mode` と、三軸・アルファそれぞれのコントラストと `Pivot` があります。コントラストの範囲は−100〜100、既定値は0です。`Pivot` は0〜100%、既定値は50%です。
 
-**R/G/B/A/Pivot**
+- `Modern`：各軸の基準範囲の端点を保つように正規化したシグモイド曲線を使います。コントラストを上げる場合、`Pivot` は曲線の変曲位置を指定し、一般にその入力値を固定する点ではありません。下げる場合は逆変換を使います。
+- `Legacy`：`Pivot` を中心とした直線的なコントラスト調整を行います。
 
-コントラストを調整する原点を変更できます。
+色相のH/hには、方式にかかわらず周期的なコントラスト曲線を使います。色相の `Pivot` は0〜100%が0〜360°に対応します。
 
-**Mode**
+`Gamma` はコントラストの後に適用します。各軸とアルファの既定値は1で、入力範囲は0.10〜10.00、スライダー範囲は0.25〜4.00です。`Hue Gamma Origin` は色相ガンマの起点を0〜360°で指定します。HSL・HSV・OKLchで使え、既定値は0°です。
 
-- Modern: より滑らかでモダンなコントラスト調整を行います。
-- Legacy: 直線的でレガシーなコントラスト調整を行います。
+すべてのコントラストが0、ガンマが1のときは、色空間の往復変換を行わず入力画素を保持します。
 
-Modernは黒と白を保つように正規化したシグモイド曲線で調整します。コントラストを上げる場合、Pivotは曲線の変曲位置を指定し、一般に入力値を固定する点ではありません。下げる場合はその逆変換を使います。32ビットの範囲外の値は、逆関数の対数の定義域を超える場合に内部値を制限します。
+### 入力RGBと範囲外の値
 
-整数画素は最も近い値へ丸めます。計算精度と丸めの修正により、既存プロジェクトの出力が変わる場合があります。
+`Options` の `Input RGB` は、ホストから受け取るRGB値の伝達特性を指定します。選択肢は `sRGB`、`Rec.709 Gamma 2.4`、`Rec.709`、`Linear sRGB / Rec.709` で、既定値は `sRGB` です。ホストの色管理設定は自動判別しないため、入力に合わせて選んでください。
 
+HSL/HSVは符号化済みsRGB、YUVはBT.709、OKLab/OKLchは線形sRGBを計算基準にし、調整後に入力の表現へ戻します。RGBモードでは伝達特性の変換を行いません。
 
-**Color Space / Input RGB**
+HSLで色を調整すると、入力の負値と1を超える値が制限されます。HSVは負値を制限し、1を超える明るさを扱います。無調整およびアルファのみの調整では、この色の範囲制限を行いません。範囲外の画素は、無調整から色の調整を始めたときに急に変化する場合があります。
 
-色空間と、入力 RGB の伝達特性を選びます。HSL/HSV は符号化済み sRGB、YUV は BT.709、OKLab/OKLch は線形 sRGB を計算基準にし、調整後に入力の表現へ戻します。入力設定は自動判別されません。
+Modernの逆変換では、対数の定義域を超える32ビットの値について内部値を制限します。整数画素への出力は最も近い値へ丸めます。
 
-各軸の Contrast、Pivot、Gamma を調整できます。Gamma の既定値は 1 です。H/h のガンマは Hue Gamma Origin を起点として色相を再配分します。色相のコントラストは周期的な曲線を使います。
+### アルファと既存プロジェクト
 
-HSL で色を調整すると、入力の負値と 1 を超える値が制限されます。HSV は負値を制限し、1 を超える明るさを扱います。無調整およびアルファのみの調整では色の範囲制限を行いません。範囲外の画素は、無調整から色の調整を始めたときに急に変化する場合があります。
+`Separate Color and Alpha` は色とアルファを分離して扱う設定です。新規適用時はオン、この項目を持たない旧プロジェクトの読み込み時は互換用のオフを補完します。現在のAE・Premiereの描画経路では、ホストのRGB値をアルファが乗算されていない値として扱います。
 
-**Separate Color and Alpha**
+既存パラメーターの保存IDは維持していますが、計算精度と整数への丸めの修正によって以前の出力と差が出る場合があります。旧プロジェクトの復元、グループ表示、描画結果は対象のAdobeホストで確認してください。自動テストや配置の成功だけでは、実機での互換性確認にはなりません。
 
-オンの場合、色とアルファを分離して処理します。新規適用時はオン、旧プロジェクトではオフが既定です。アルファ 0 の乗算済み画素では色を除算できないため、元の色を復元できません。ホストごとの画素形式と既存プロジェクトの読み込みは実機での確認が必要です。
+## ビルドと配置
 
-## 開発用の依存関係
+リポジトリのルートで実行します。Rustの安定版（`stable`）ツールチェーン、`just`、`uv`、Python 3.11以上を用意してください。WindowsではMSVC向けのC++ビルド環境、macOSではXcodeのコマンドラインツールが必要です。配置とリリースの補助スクリプトはPythonの標準ライブラリだけを使い、`uv`によるPythonの自動ダウンロードは行いません。
 
-`after-effects` とビルド時に使う `pipl` は、[上流リポジトリ](https://github.com/virtualritz/after-effects)の同じコミットを `Cargo.toml` の `rev` に指定しています。`Cargo.lock` も管理し、通常のビルドでは `--locked` を付けて検証済みの依存関係を使います。初回の取得には GitHub と crates.io への接続が必要です。
+| コマンド | 動作 |
+| --- | --- |
+| `just build` | 開発用ビルドを生成します。 |
+| `just release` | 最適化ビルドを生成します。Windowsは `.aex`、macOSはIntel・Apple Silicon両対応の `.plugin` を作成します。 |
+| `just install-plan [配置先]` | ビルド・書き込みをせず、生成先と配置先を表示します。 |
+| `just install [配置先]` | `just release` の成功後、対象プラグインを検査・配置して完了を待ちます。 |
+| `just test-tools` | 配置とリリース補助のテストを実行します。 |
 
-上流の修正を取り込む場合は、リポジトリのルートで次の手順を実施してください。
+`just build` と `just release` はインストールしません。配置には `just install` を使います。`NO_INSTALL` の指定は不要です。
 
-1. 上流の変更内容を確認し、2つの `rev` を取り込みたい同じコミットの完全な SHA に変更します。
-2. 次のコマンドで関連する依存関係を更新し、`Cargo.lock` の差分を確認します。
+配置先の優先順位は、コマンドの引数、環境変数 `AE_PLUGIN_DIR`、OS既定のMediaCoreフォルダーです。
+
+| OS | 既定の配置先 |
+| --- | --- |
+| Windows | `C:\Program Files\Adobe\Common\Plug-ins\7.0\MediaCore` |
+| macOS | `/Library/Application Support/Adobe/Common/Plug-ins/7.0/MediaCore` |
+
+生成先は `CARGO_TARGET_DIR` に従い、未指定時は `target` です。相対パスはリポジトリのルートを基準にします。空白を含むパスは引用符で囲んでください。例えば、書き込み可能な検証用フォルダーへ配置できます。
+
+```sh
+just install-plan "target/test plugins"
+just install "target/test plugins"
+```
+
+配置前に、生成物と同名の配置済みプラグインのOS形式、公開入口 `EffectMain`、PiPLの製品名を検査します。別製品や破損ファイルは上書きしません。macOSではバンドル識別子と署名も検証します。ビルド・複写・置換に失敗した場合は、配置済みのプラグインを保持します。
+
+書き込み権限が必要な配置先では、権限を持つ端末から実行してください。使用中のプラグインを更新できない場合はAfter Effects／Premiere Proを終了して再実行してください。
+
+macOSのローカルビルドでは、利用可能なApple Development証明書があればその証明書を使い、なければ開発用のアドホック署名を使います。一般配布用のDeveloper ID署名・公証は別途必要です。CIで生成するリリース成果物はアドホック署名で、Developer ID署名・公証は行いません。
+
+## 開発
+
+通常の作業ブランチは最新の `main` から作り、変更は `main` 向けのPRで統合します。`main` への直接プッシュは行いません。
+
+`plans/` はローカルの検討メモ置き場としてGitの管理対象から外しています。確定した仕様や利用手順は、このREADMEなどGitで管理する文書へ反映します。
+
+### 検証
+
+次のコマンドで書式、静的解析、Rustの通常・最適化テスト、補助スクリプト、プラグインの生成を確認します。`just release` は配置を行いません。
+
+```sh
+cargo fmt --check
+cargo clippy --locked -- -D warnings
+cargo test --locked
+cargo test --release --locked
+just test-tools
+just release
+```
+
+Windowsでは、生成済みDLLのPiPL構造と必須フラグも検査します。`CARGO_TARGET_DIR` を指定した場合は、DLLのパスを読み替えてください。
+
+```sh
+uv run --no-project --no-python-downloads python -X utf8 scripts/verify_pipl.py target/release/rgba_contrast.dll
+```
+
+CIではWindowsでRustの検査・DLL生成・PiPL検査、macOSでユニバーサルバンドルの生成・署名検査・一時フォルダーへの配置を行います。両OSで配置・リリース補助のテストも実行します。Adobeホスト上の読み込み・描画確認は別途必要です。
+
+### 上流クレートの更新
+
+`after-effects` とビルド時に使う `pipl` は、[上流リポジトリ](https://github.com/virtualritz/after-effects)の同じコミットを `Cargo.toml` の `rev` に指定しています。`Cargo.lock` も管理し、通常のビルドには `--locked` を付けます。初回の取得にはGitHubとcrates.ioへの接続が必要です。
+
+1. 上流の変更内容を確認し、2つの `rev` を取り込みたい同じコミットの完全なSHAに変更します。
+2. 次のコマンドで依存関係を更新し、`Cargo.lock` の差分を確認します。
 
    ```sh
    cargo update -p after-effects -p pipl
@@ -59,51 +120,21 @@ HSL で色を調整すると、入力の負値と 1 を超える値が制限さ�
    cargo tree --locked -i pipl
    ```
 
-3. 次の検証を実行し、After Effects / Premiere Pro で読み込みと描画を確認します。macOS の配布用バンドルは `just release` で作成できます。
-
-   ```sh
-   cargo fmt --check
-   cargo clippy --locked -- -D warnings
-   cargo test --locked
-   cargo test --release --locked
-   cargo build --release --locked
-   ```
-
-4. `Cargo.toml` と `Cargo.lock` を同じ PR に含め、取り込む修正、API 対応、検証結果と未確認の環境を記録します。
+3. [検証](#検証)を実行し、利用できるAfter Effects／Premiere Proで読み込みと描画を確認します。
+4. `Cargo.toml` と `Cargo.lock` を同じPRに含め、取り込む修正、API対応、検証結果と未確認の環境を記録します。
 
 `rev` を固定しているため、ビルドや `cargo update` だけで別の上流コミットへ切り替わることはありません。
 
-## 開発とリリース
+## リリース
 
-通常の作業ブランチは `main` から作り、変更は `main` 向けの PR で統合します。`main` への直接プッシュは行いません。
+1. `main` から `release/v<version>` ブランチを作り、`Cargo.toml` と必要な `Cargo.lock` の版番号だけを更新したPRを作成します。ブランチ名の版番号と `Cargo.toml` の `package.version` を一致させます。
+2. 検証後にそのPRを `main` へマージすると、GitHub Actionsの `Release` ワークフローがマージコミットからWindows／macOSのZIPを生成します。
+3. 両OSのビルド成功後、`v<version>` タグ、GitHub Release、ZIP、`SHA256SUMS.txt` を公開します。既存のタグがある版は再公開しません。
 
-リリース時は `main` から `release/v<version>` ブランチを作り、`Cargo.toml` と必要な `Cargo.lock` の版番号を更新した PR を作成します。PR を `main` にマージすると、GitHub Actions がそのマージコミットから Windows / macOS の成果物を構築し、成功後にタグと GitHub Release を作成します。通常の開発 PR では公開されません。詳しい検証と失敗時の対応は `.codex/skills/rgba-contrast-release/SKILL.md` を参照してください。
+通常の開発PRでは公開されません。`scripts/validate_release.py` は公開前に、PRのマージ状態・リポジトリ・基点・ブランチ名・版番号・変更ファイルがリリース条件に合うかを検証する補助スクリプトです。通常の手動ビルドでは実行する必要はありません。
 
-## ビルドとインストール
+準備と失敗時の対応は[リリース手順](.codex/skills/rgba-contrast-release/SKILL.md)を参照してください。
 
-Rustに加えて `just`、`uv`、Python 3.11以上を用意し、リポジトリのルートで実行してください。導入補助はPythonの標準ライブラリだけを使います。`uv`によるPythonの自動ダウンロードは行いません。
+## ライセンス
 
-| コマンド | 動作 |
-| --- | --- |
-| `just build` | 開発用ビルドを生成します。 |
-| `just release` | 最適化ビルドを生成します。Windowsは `.aex`、macOSは署名付きユニバーサル `.plugin` を作成します。 |
-| `just install-plan [配置先]` | ビルド・書き込みをせず、生成先と配置先を表示します。 |
-| `just install [配置先]` | `just release` の成功後、対象プラグインを検査・配置して完了を待ちます。 |
-| `just test-tools` | 配置とリリース補助の契約を検証します。 |
-
-`build`と`release`からの自動インストールは廃止しました。インストールには`just install`を使用してください。`NO_INSTALL`の指定は不要です。
-
-配置先の優先順位は、コマンドの引数、環境変数 `AE_PLUGIN_DIR`、OS既定のMediaCoreフォルダーです。Windowsの既定値は `C:\Program Files\Adobe\Common\Plug-ins\7.0\MediaCore`、macOSは `/Library/Application Support/Adobe/Common/Plug-ins/7.0/MediaCore` です。生成先は `CARGO_TARGET_DIR` に従い、未指定時は `target` を使います。相対パスはリポジトリのルートを基準にします。
-
-例えば、書き込み可能な検証用フォルダーへ配置できます。空白を含むパスは引用符で囲んでください。
-
-```sh
-just install-plan "target/test plugins"
-just install "target/test plugins"
-```
-
-配置前に、生成物と同名の配置済みプラグインのOS形式、公開入口 `EffectMain`、PiPLの表示名 `RGBA Contrast` とMatch Name `HANAYUKI RGBA Contrast` を検査します。別製品や破損ファイルは上書きしません。macOSではバンドル識別子と署名も検証するため、Xcodeのコマンドラインツールが必要です。
-
-ビルドに失敗した場合は配置せず、複写や置換に失敗した場合も既存ファイルを保持します。macOSのバンドルは一時領域で複写してから置換するため、旧版だけに存在したファイルが残りません。書き込み権限が必要な配置先は、権限を持つ端末から実行してください。使用中のプラグインを更新できない場合はAfter Effects／Premiere Proを終了して再実行してください。
-
-配置の成功とAdobeホスト上の読み込み・描画確認は別です。
+[MIT License](LICENSE)。Copyright 2025 花雪（X: @Yuk1_Works）
