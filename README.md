@@ -6,14 +6,14 @@ After Effects / Premiere Pro用の、コントラストとガンマを調整す�
 
 `Color Space` で色空間を選びます。既定値は `RGB` です。各軸の表示名は色空間に合わせて変わります。
 
-| 色空間 | 調整する三軸 |
-| --- | --- |
-| RGB | Red・Green・Blue |
-| HSL | H（色相）・S（彩度）・L（明度） |
-| HSV | H（色相）・S（彩度）・V（明るさ） |
-| YUV（BT.709） | Y（輝度成分）・U/V（色差成分） |
-| OKLab | L（明度）・a/b（色成分） |
-| OKLch | L（明度）・C（彩度）・h（色相） |
+| 色空間        | 調整する三軸                      |
+| ------------- | --------------------------------- |
+| RGB           | Red・Green・Blue                  |
+| HSL           | H（色相）・S（彩度）・L（明度）   |
+| HSV           | H（色相）・S（彩度）・V（明るさ） |
+| YUV（BT.709） | Y（輝度成分）・U/V（色差成分）    |
+| OKLab         | L（明度）・a/b（色成分）          |
+| OKLch         | L（明度）・C（彩度）・h（色相）   |
 
 操作項目は `Contrast`、`Gamma`、`Options` のグループに分かれています。`Contrast` は初期状態で展開され、残りのグループは折りたたまれています。
 
@@ -50,22 +50,22 @@ Modernの逆変換では、対数の定義域を超える32ビットの値につ
 
 リポジトリのルートで実行します。Rustの安定版（`stable`）ツールチェーン、`just`、`uv`、Python 3.11以上を用意してください。WindowsではMSVC向けのC++ビルド環境、macOSではXcodeのコマンドラインツールが必要です。配置とリリースの補助スクリプトはPythonの標準ライブラリだけを使い、`uv`によるPythonの自動ダウンロードは行いません。
 
-| コマンド | 動作 |
-| --- | --- |
-| `just build` | 開発用ビルドを生成します。 |
-| `just release` | 最適化ビルドを生成します。Windowsは `.aex`、macOSはIntel・Apple Silicon両対応の `.plugin` を作成します。 |
-| `just install-plan [配置先]` | ビルド・書き込みをせず、生成先と配置先を表示します。 |
-| `just install [配置先]` | `just release` の成功後、対象プラグインを検査・配置して完了を待ちます。 |
-| `just test-tools` | 配置とリリース補助のテストを実行します。 |
+| コマンド                     | 動作                                                                                                     |
+| ---------------------------- | -------------------------------------------------------------------------------------------------------- |
+| `just build`                 | 開発用ビルドを生成します。                                                                               |
+| `just release`               | 最適化ビルドを生成します。Windowsは `.aex`、macOSはIntel・Apple Silicon両対応の `.plugin` を作成します。 |
+| `just install-plan [配置先]` | ビルド・書き込みをせず、生成先と配置先を表示します。                                                     |
+| `just install [配置先]`      | `just release` の成功後、対象プラグインを検査・配置して完了を待ちます。                                  |
+| `just test-tools`            | 配置とリリース補助のテストを実行します。                                                                 |
 
 `just build` と `just release` はインストールしません。配置には `just install` を使います。`NO_INSTALL` の指定は不要です。
 
 配置先の優先順位は、コマンドの引数、環境変数 `AE_PLUGIN_DIR`、OS既定のMediaCoreフォルダーです。
 
-| OS | 既定の配置先 |
-| --- | --- |
-| Windows | `C:\Program Files\Adobe\Common\Plug-ins\7.0\MediaCore` |
-| macOS | `/Library/Application Support/Adobe/Common/Plug-ins/7.0/MediaCore` |
+| OS      | 既定の配置先                                                       |
+| ------- | ------------------------------------------------------------------ |
+| Windows | `C:\Program Files\Adobe\Common\Plug-ins\7.0\MediaCore`             |
+| macOS   | `/Library/Application Support/Adobe/Common/Plug-ins/7.0/MediaCore` |
 
 生成先は `CARGO_TARGET_DIR` に従い、未指定時は `target` です。相対パスはリポジトリのルートを基準にします。空白を含むパスは引用符で囲んでください。例えば、書き込み可能な検証用フォルダーへ配置できます。
 
@@ -86,12 +86,30 @@ macOSのローカルビルドでは、利用可能なApple Development証明書�
 
 `plans/` はローカルの検討メモ置き場としてGitの管理対象から外しています。確定した仕様や利用手順は、このREADMEなどGitで管理する文書へ反映します。
 
+### 整形
+
+Rustは `rustfmt`、Markdown・JSON・JSONCは `dprint` で整形します。Dither Lab／Impactと同じく、Rustは2024年版の書式・4スペース、文書とJSONは2スペースを基本とします。改行はLFに統一し、エディター向けの設定は `.editorconfig` で共有します。
+
+`dprint` はImpactと同じ `0.60.1` に固定しています。Rustの `rustfmt` と合わせて、一度導入してください。
+
+```sh
+rustup component add rustfmt
+cargo install dprint --version 0.60.1 --locked
+```
+
+| コマンド         | 動作                                             |
+| ---------------- | ------------------------------------------------ |
+| `just fmt`       | Rustと文書・JSONを整形します。                   |
+| `just fmt-check` | ファイルを変更せず、同じ対象の書式を検証します。 |
+
+`dprint.json` で対象ファイルとプラグインの版を固定しています。`target/`、`plans/` とGitの除外対象は整形しません。使用する `dprint` の版が異なる場合は、整形する前に停止して導入方法を案内します。
+
 ### 検証
 
 次のコマンドで書式、静的解析、Rustの通常・最適化テスト、補助スクリプト、プラグインの生成を確認します。`just release` は配置を行いません。
 
 ```sh
-cargo fmt --check
+just fmt-check
 cargo clippy --locked -- -D warnings
 cargo test --locked
 cargo test --release --locked
@@ -105,7 +123,7 @@ Windowsでは、生成済みDLLのPiPL構造と必須フラグも検査します
 uv run --no-project --no-python-downloads python -X utf8 scripts/verify_pipl.py target/release/rgba_contrast.dll
 ```
 
-CIではWindowsでRustの検査・DLL生成・PiPL検査、macOSでユニバーサルバンドルの生成・署名検査・一時フォルダーへの配置を行います。両OSで配置・リリース補助のテストも実行します。Adobeホスト上の読み込み・描画確認は別途必要です。
+CIではWindowsでRustと文書・JSONの書式検査、Rustの静的解析・テスト・DLL生成・PiPL検査、macOSでユニバーサルバンドルの生成・署名検査・一時フォルダーへの配置を行います。両OSで配置・リリース補助のテストも実行します。Adobeホスト上の読み込み・描画確認は別途必要です。
 
 ### 上流クレートの更新
 
