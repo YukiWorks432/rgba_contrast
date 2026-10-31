@@ -37,7 +37,7 @@ Modernは黒と白を保つように正規化したシグモイド曲線で調�
    cargo tree --locked -i pipl
    ```
 
-3. 次の検証を実行し、After Effects / Premiere Pro で読み込みと描画を確認します。macOS の配布用バンドルは `NO_INSTALL=1 just release` で作成できます。
+3. 次の検証を実行し、After Effects / Premiere Pro で読み込みと描画を確認します。macOS の配布用バンドルは `just release` で作成できます。
 
    ```sh
    cargo fmt --check
@@ -56,3 +56,32 @@ Modernは黒と白を保つように正規化したシグモイド曲線で調�
 通常の作業ブランチは `main` から作り、変更は `main` 向けの PR で統合します。`main` への直接プッシュは行いません。
 
 リリース時は `main` から `release/v<version>` ブランチを作り、`Cargo.toml` と必要な `Cargo.lock` の版番号を更新した PR を作成します。PR を `main` にマージすると、GitHub Actions がそのマージコミットから Windows / macOS の成果物を構築し、成功後にタグと GitHub Release を作成します。通常の開発 PR では公開されません。詳しい検証と失敗時の対応は `.codex/skills/rgba-contrast-release/SKILL.md` を参照してください。
+
+## ビルドとインストール
+
+Rustに加えて `just`、`uv`、Python 3.11以上を用意し、リポジトリのルートで実行してください。導入補助はPythonの標準ライブラリだけを使います。`uv`によるPythonの自動ダウンロードは行いません。
+
+| コマンド | 動作 |
+| --- | --- |
+| `just build` | 開発用ビルドを生成します。 |
+| `just release` | 最適化ビルドを生成します。Windowsは `.aex`、macOSは署名付きユニバーサル `.plugin` を作成します。 |
+| `just install-plan [配置先]` | ビルド・書き込みをせず、生成先と配置先を表示します。 |
+| `just install [配置先]` | `just release` の成功後、対象プラグインを検査・配置して完了を待ちます。 |
+| `just test-tools` | 配置とリリース補助の契約を検証します。 |
+
+`build`と`release`からの自動インストールは廃止しました。インストールには`just install`を使用してください。`NO_INSTALL`の指定は不要です。
+
+配置先の優先順位は、コマンドの引数、環境変数 `AE_PLUGIN_DIR`、OS既定のMediaCoreフォルダーです。Windowsの既定値は `C:\Program Files\Adobe\Common\Plug-ins\7.0\MediaCore`、macOSは `/Library/Application Support/Adobe/Common/Plug-ins/7.0/MediaCore` です。生成先は `CARGO_TARGET_DIR` に従い、未指定時は `target` を使います。相対パスはリポジトリのルートを基準にします。
+
+例えば、書き込み可能な検証用フォルダーへ配置できます。空白を含むパスは引用符で囲んでください。
+
+```sh
+just install-plan "target/test plugins"
+just install "target/test plugins"
+```
+
+配置前に、生成物と同名の配置済みプラグインのOS形式、公開入口 `EffectMain`、PiPLの表示名 `RGBA Contrast` とMatch Name `HANAYUKI RGBA Contrast` を検査します。別製品や破損ファイルは上書きしません。macOSではバンドル識別子と署名も検証するため、Xcodeのコマンドラインツールが必要です。
+
+ビルドに失敗した場合は配置せず、複写や置換に失敗した場合も既存ファイルを保持します。macOSのバンドルは一時領域で複写してから置換するため、旧版だけに存在したファイルが残りません。書き込み権限が必要な配置先は、権限を持つ端末から実行してください。使用中のプラグインを更新できない場合はAfter Effects／Premiere Proを終了して再実行してください。
+
+配置の成功とAdobeホスト上の読み込み・描画確認は別です。

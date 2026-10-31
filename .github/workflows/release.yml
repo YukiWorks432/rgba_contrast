@@ -108,7 +108,7 @@ jobs:
         shell: bash
         run: |
           cargo install just --version 1.42.4 --locked
-          NO_INSTALL=1 just release
+          just release
           lipo -verify_arch x86_64 arm64 target/release/rgba_contrast.plugin/Contents/MacOS/rgba_contrast
           mkdir -p release
           ditto -c -k --keepParent target/release/rgba_contrast.plugin "release/rgba_contrast-v${VERSION}-macos.zip"
