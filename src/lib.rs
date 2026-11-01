@@ -37,6 +37,7 @@ enum Params {
     GammaGroupEnd,
     OptionsGroup,
     OptionsGroupEnd,
+    SemanticAxisMapping,
 }
 #[derive(Eq, PartialEq, Hash, Clone, Copy, Debug)]
 #[repr(i32)]
@@ -82,6 +83,73 @@ fn smart_rects(
         result.union(&clipped);
     }
     (result, max)
+}
+
+// 保存枠は変更せず、HSL/HSVの計算順だけを [H, S, L/V] に揃える。
+fn axis_values(
+    space: Space,
+    semantic: bool,
+    mut contrast: [f32; 4],
+    mut pivot: [f32; 4],
+    mut gamma: [f32; 4],
+) -> ([f32; 4], [f32; 4], [f32; 4]) {
+    if semantic && matches!(space, Space::Hsl | Space::Hsv) {
+        contrast.swap(0, 2);
+        pivot.swap(0, 2);
+        gamma.swap(0, 2);
+    }
+    (contrast, pivot, gamma)
+}
+
+#[cfg(test)]
+mod axis_mapping_tests {
+    use super::{Space, axis_values};
+
+    #[test]
+    fn hsv_to_oklch_preserves_adjustment_roles_and_alpha() {
+        let contrast = [30.0, 20.0, 10.0, 40.0];
+        let pivot = [0.4, 0.5, 0.6, 0.7];
+        let gamma = [1.2, 1.3, 1.4, 1.5];
+        let (hsv_c, hsv_p, hsv_g) = axis_values(Space::Hsv, true, contrast, pivot, gamma);
+        let (lch_c, lch_p, lch_g) = axis_values(Space::Oklch, true, contrast, pivot, gamma);
+        // HSVのV/S/HがOKLchのL/C/hに対応する。
+        for (hsv, lch) in [(hsv_c, lch_c), (hsv_p, lch_p), (hsv_g, lch_g)] {
+            assert_eq!([hsv[2], hsv[1], hsv[0], hsv[3]], lch);
+        }
+        assert_eq!(lch_c, [30.0, 20.0, 10.0, 40.0]);
+        assert_eq!(lch_p, [0.4, 0.5, 0.6, 0.7]);
+        assert_eq!(lch_g, [1.2, 1.3, 1.4, 1.5]);
+    }
+
+    #[test]
+    fn legacy_and_non_hue_spaces_keep_their_existing_axes() {
+        let contrast = [30.0, 20.0, 10.0, 40.0];
+        let pivot = [0.4, 0.5, 0.6, 0.7];
+        let gamma = [1.2, 1.3, 1.4, 1.5];
+        for space in [
+            Space::Rgb,
+            Space::Hsl,
+            Space::Hsv,
+            Space::Yuv,
+            Space::Oklab,
+            Space::Oklch,
+        ] {
+            assert_eq!(
+                axis_values(space, false, contrast, pivot, gamma),
+                (contrast, pivot, gamma)
+            );
+        }
+        for space in [Space::Rgb, Space::Yuv, Space::Oklab, Space::Oklch] {
+            assert_eq!(
+                axis_values(space, true, contrast, pivot, gamma),
+                (contrast, pivot, gamma)
+            );
+        }
+        assert_eq!(
+            axis_values(Space::Hsl, true, contrast, pivot, gamma).0,
+            [10.0, 20.0, 30.0, 40.0]
+        );
+    }
 }
 
 #[derive(Default)]
@@ -226,6 +294,17 @@ impl AdobePluginGlobal for Plugin {
                 Ok(())
             },
         )?;
+        // 旧プロジェクトでは軸順を維持し、新規適用では役割を揃える。
+        params.add_with_flags(
+            Params::SemanticAxisMapping,
+            "Semantic Axis Mapping",
+            ae::CheckBoxDef::setup(|f| {
+                f.set_default(true);
+                f.set_value(false);
+            }),
+            ae::ParamFlag::CANNOT_TIME_VARY | ae::ParamFlag::USE_VALUE_FOR_OLD_PROJECTS,
+            ae::ParamUIFlags::INVISIBLE,
+        )?;
         Ok(())
     }
 
@@ -275,6 +354,11 @@ impl AdobePluginGlobal for Plugin {
                 params.get(Params::Alpha)?.as_float_slider()?.value() as f32,
             ];
             let pivots = [pivot.red, pivot.green, pivot.blue, pivot.alpha];
+            let semantic = params
+                .get(Params::SemanticAxisMapping)?
+                .as_checkbox()?
+                .value();
+            let (contrast, pivots, gamma) = axis_values(space, semantic, contrast, pivots, gamma);
             Ok::<_, Error>(Adjustment::new(
                 space,
                 transfer,
@@ -315,8 +399,14 @@ impl AdobePluginGlobal for Plugin {
             }
             ae::Command::UpdateParamsUi => {
                 let selected_space = params.get(Params::ColorSpace)?.as_popup()?.value();
+                let semantic = params
+                    .get(Params::SemanticAxisMapping)?
+                    .as_checkbox()?
+                    .value();
                 let labels = match selected_space {
                     1 => ["Red", "Green", "Blue"],
+                    2 if semantic => ["L", "S", "H"],
+                    3 if semantic => ["V", "S", "H"],
                     2 => ["H", "S", "L"],
                     3 => ["H", "S", "V"],
                     4 => ["Y", "U", "V"],
