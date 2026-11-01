@@ -155,4 +155,4 @@ CIではWindowsでRustと文書・JSONの書式検査、Rustの静的解析・�
 
 ## ライセンス
 
-[MIT License](LICENSE)。Copyright 2025 花雪（X: @Yuk1_Works）
+[MIT License](LICENSE)。Copyright 2025-2026 花雪（X: @Yuk1_Works）
